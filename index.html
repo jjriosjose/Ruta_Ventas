@@ -1,0 +1,327 @@
+
+<!DOCTYPE html>
+
+<html>
+<head>
+<meta charset="utf-8"/>
+<title>Mapa Global Funcional</title>
+<style>
+        body { margin: 0; padding: 0; }
+        #map { height: 100vh; width: 100%; }
+        #panel {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            z-index: 1000;
+            background: white;
+            padding: 10px;
+            border-radius: 5px;
+            width: 250px;
+            box-shadow: 0 0 10px rgba(0,0,0,0.3);
+        }
+        select, input { width: 100%; margin-bottom: 8px; }
+    </style>
+<link href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" rel="stylesheet"/>
+<script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
+</head>
+<body>
+<div id="map"></div>
+<div id="panel">
+<label>Vendedor:</label>
+<select id="vendedor" multiple="multiple" size="5"></select>
+<label>Gestor:</label>
+<select id="gestor"></select>
+<label>Semana:</label>
+<select id="semana"></select>
+<label>Día de la Semana:</label>
+<select id="dia"></select>
+<label>Condición:</label>
+<select id="condicion">
+<option value="">-- Todos --</option>
+<option value="En Ruta">En Ruta</option>
+<option value="Sin Ruta">Sin Ruta</option>
+</select>
+<label>Buscar Cliente:</label>
+<input id="buscar" placeholder="Escriba el nombre..." type="text"/>
+<label>Cliente:</label>
+<select id="cliente"></select><br/><br/>
+<button id="visitar">Visitar</button>
+<button id="registro">Registro</button>
+<button id="nuevo">Nuevo Cliente</button>
+<button id="reset">Restaurar Mapa</button>
+</div>
+<script>
+
+function llenarSelect(id, valores) {
+    const select = document.getElementById(id);
+    select.innerHTML = '<option value="">-- Seleccione --</option>';
+    valores.forEach(v => {
+        let opt = document.createElement("option");
+        opt.value = v;
+        opt.textContent = v;
+        select.appendChild(opt);
+    });
+}
+
+function obtenerColor(vendedor) {
+    const colores = ["blue", "green", "violet", "orange", "black"];
+    const vendedores = [...new Set(data.map(c => c.vendedor).filter(Boolean))];
+    const index = vendedores.indexOf(vendedor);
+    return colores[index % colores.length];
+}
+
+function cargarFiltros() {
+    llenarSelect("vendedor", [...new Set(data.map(c => c.vendedor).filter(Boolean))]);
+    llenarSelect("gestor", [...new Set(data.map(c => c.gestor).filter(Boolean))]);
+    llenarSelect("semana", [...new Set(data.map(c => c.semana).filter(Boolean))]);
+    
+    llenarSelect("dia", ["LUNES", "MARTES", "MIERCOLES", "JUEVES", "VIERNES", "SABADO"]);
+    
+}
+
+function actualizarClientes() {
+    const vendedorSelect = document.getElementById("vendedor");
+    const vendedoresSeleccionados = Array.from(vendedorSelect.selectedOptions).map(opt => opt.value);
+    const gestor = document.getElementById("gestor").value;
+    const semana = document.getElementById("semana").value;
+    const dia = document.getElementById("dia").value;
+    const condicion = document.getElementById("condicion").value;
+    const buscar = document.getElementById("buscar").value.toLowerCase();
+
+    const filtrados = data.filter(c =>
+        (vendedoresSeleccionados.length === 0 || vendedoresSeleccionados.includes(c.vendedor)) &&
+        (!gestor || c.gestor === gestor) &&
+        (!semana || String(c.semana) === semana) &&
+        (!dia || c.dia === dia) &&
+        (!condicion || c.condicion === condicion) &&
+        (!buscar || c.RazonSocial.toLowerCase().includes(buscar))
+    );
+
+    markers.clearLayers();
+    const clienteSelect = document.getElementById("cliente");
+    clienteSelect.innerHTML = '<option value="">-- Seleccione --</option>';
+
+    filtrados.forEach(c => {
+        const opt = document.createElement("option");
+        opt.value = c.RazonSocial;
+        opt.textContent = c.RazonSocial;
+        clienteSelect.appendChild(opt);
+
+        if (c.latitud && c.longitud) {
+            const color = obtenerColor(c.vendedor);
+            const icon = new L.Icon({
+                iconUrl: "https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-" + color + ".png",
+                shadowUrl: "https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png",
+                iconSize: [25, 41],
+                iconAnchor: [12, 41],
+                popupAnchor: [1, -34],
+                shadowSize: [41, 41]
+            });
+            const marker = L.marker([c.latitud, c.longitud], { icon: icon }).bindPopup(`<b>${c.RazonSocial}</b><br><a target='_blank' href='https://www.google.com/maps/dir/?api=1&destination=${c.latitud},${c.longitud}'>Ir a Ubicación</a>`);
+            markers.addLayer(marker);
+        }
+    });
+}
+
+let map = L.map("map").setView([18.7357, -70.1627], 8);
+L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png").addTo(map);
+let markers = L.layerGroup().addTo(map);
+
+window.onload = function () {
+    cargarFiltros();
+    actualizarClientes();
+
+    document.getElementById("vendedor").onchange = actualizarClientes;
+    document.getElementById("gestor").onchange = actualizarClientes;
+    document.getElementById("semana").onchange = actualizarClientes;
+    document.getElementById("dia").onchange = actualizarClientes;
+    document.getElementById("condicion").onchange = actualizarClientes;
+    document.getElementById("buscar").oninput = actualizarClientes;
+document.getElementById("cliente").onchange = function () {
+    const nombre = this.value;
+    const cliente = data.find(c => c.RazonSocial === nombre);
+    if (cliente && cliente.latitud && cliente.longitud) {
+        map.setView([cliente.latitud, cliente.longitud], 15);
+        markers.eachLayer(m => {
+            if (m.getLatLng().lat == cliente.latitud && m.getLatLng().lng == cliente.longitud) {
+                m.openPopup();
+            }
+        });
+    }
+};
+};
+
+document.getElementById("registro").onclick = function () {
+    window.open("https://docs.google.com/forms/d/e/1FAIpQLSeEki-rHj1e1OgDTM9W_VFJmd9k3YfKNIpRhclVaK6mx-hHvA/viewform?usp=pp_url", "_blank");
+};
+document.getElementById("visitar").onclick = function () {
+    const nombre = document.getElementById("cliente").value;
+    const cliente = data.find(c => c.RazonSocial === nombre);
+    if (cliente && cliente.latitud && cliente.longitud) {
+        const url = `https://www.google.com/maps/dir/?api=1&destination=${cliente.latitud},${cliente.longitud}`;
+        window.open(url, "_blank");
+    } else {
+        alert("Cliente sin ubicación válida.");
+    }
+};
+document.getElementById("nuevo").onclick = function () {
+    if (!navigator.geolocation) {
+        alert("Geolocalización no soportada");
+        return;
+    }
+
+    navigator.geolocation.getCurrentPosition(pos => {
+        const lat = pos.coords.latitude;
+        const lon = pos.coords.longitude;
+        const vendedor = document.getElementById('vendedor').value || "";
+        const semana = document.getElementById('semana').value || "";
+        const dia = document.getElementById('dia').value || "";
+
+        const url = `https://docs.google.com/forms/d/e/1FAIpQLSeEki-rHj1e1OgDTM9W_VFJmd9k3YfKNIpRhclVaK6mx-hHvA/viewform?usp=pp_url`
+            + `&entry.985299062=${encodeURIComponent(vendedor)}`
+            + `&entry.381054793=NUEVO`
+            + `&entry.1634734772=${encodeURIComponent(lat)}`
+            + `&entry.566218311=${encodeURIComponent(lon)}`;
+
+        window.open(url, "_blank");
+    });
+};
+
+document.getElementById("reset").onclick = function () {
+    // Reiniciar selects y campos
+    ["vendedor","gestor","semana","dia","condicion","cliente"].forEach(id => document.getElementById(id).value = "");
+    document.getElementById("buscar").value = "";
+    actualizarClientes(); // Vuelve a mostrar todos los pines
+    map.setView([18.7357, -70.1627], 8); // Centro aproximado de República Dominicana
+};
+
+const clienteSelect = document.getElementById("cliente");
+const registroBtn = document.getElementById("registro");
+const nuevoBtn = document.getElementById("nuevoCliente");
+
+clienteSelect.onchange = function () {
+    registroBtn.disabled = this.value === "";
+};
+
+
+
+
+
+registroBtn.onclick = function () {
+    if (!navigator.geolocation) {
+        alert("Geolocalización no soportada");
+        return;
+    }
+
+    navigator.geolocation.getCurrentPosition(pos => {
+        const lat = pos.coords.latitude;
+        const lon = pos.coords.longitude;
+        const id = clienteSelect.value;
+        const cliente = data.find(c => c.RazonSocial === id);
+
+        if (cliente) {
+            const condicion = cliente.condicion || "Sin Ruta";
+            const url = `https://docs.google.com/forms/d/e/1FAIpQLSeEki-rHj1e1OgDTM9W_VFJmd9k3YfKNIpRhclVaK6mx-hHvA/viewform?usp=pp_url`
+                + `&entry.985299062=${encodeURIComponent(cliente.vendedor || "")}`
+                + `&entry.366494420=${encodeURIComponent(cliente.gestor || "")}`
+                + `&entry.381054793=${encodeURIComponent(condicion)}`
+                + `&entry.1521955635=${encodeURIComponent(cliente["cod empresa"] || "")}`
+                + `&entry.879964686=${encodeURIComponent(cliente.RazonSocial || "")}`
+                + `&entry.1634734772=${encodeURIComponent(lat)}`
+                + `&entry.566218311=${encodeURIComponent(lon)}`;
+            window.open(url, "_blank");
+        } else {
+            alert("Debe seleccionar un cliente válido.");
+        }
+    });
+};
+
+
+
+
+
+
+
+
+
+
+
+</script>
+<script>
+
+nuevoBtn.onclick = function () {
+    if (!navigator.geolocation) {
+        alert("Geolocalización no soportada");
+        return;
+    }
+
+    navigator.geolocation.getCurrentPosition(pos => {
+        const lat = pos.coords.latitude;
+        const lon = pos.coords.longitude;
+        const vendedor = document.getElementById('vendedor').value || "Sin Vendedor";
+
+        const url = `https://docs.google.com/forms/d/e/1FAIpQLSeEki-rHj1e1OgDTM9W_VFJmd9k3YfKNIpRhclVaK6mx-hHvA/viewform?usp=pp_url`;
+        window.open(url, "_blank");
+    });
+};
+
+</script><script>
+let data = [];
+
+async function cargarDatosDesdeSheet() {
+    const url = "https://api.allorigins.win/raw?url=https://docs.google.com/spreadsheets/d/e/2PACX-1vTnmjSg8mtidztak7cO6Es8tOTRujAes62qA9gsu1FYn219IaLqBpkYlIgZJgDNcpKHATaG9tWqwrE7/pub?output=csv";
+    const response = await fetch(url);
+    const csvText = await response.text();
+
+    const filas = csvText.split("\n").slice(1); // saltar cabecera
+    data = filas.map(row => {
+        const cols = row.split(",");
+        return {
+            provincia: cols[0]?.trim(),
+            condicion: cols[1]?.trim(),
+            dia: cols[2]?.trim(),
+            semana: parseInt(cols[3]?.trim()) || "",
+            vendedor: cols[4]?.trim(),
+            gestor: cols[5]?.trim(), // era gestor_servicio
+            "cod empresa": cols[6]?.trim(),
+            RazonSocial: cols[7]?.trim(),
+            latitud: parseFloat(cols[8]?.replaceAll('"','').trim()) || null,
+            longitud: parseFloat(cols[9]?.replaceAll('"','').trim()) || null
+        };
+    }).filter(c => c.RazonSocial && c.latitud && c.longitud);
+
+    actualizarClientes();
+}
+
+window.onload = async function () {
+    await cargarDatosDesdeSheet();
+    cargarFiltros();
+    actualizarClientes();
+
+    document.getElementById("vendedor").onchange = actualizarClientes;
+    document.getElementById("gestor").onchange = actualizarClientes;
+    document.getElementById("semana").onchange = actualizarClientes;
+    document.getElementById("dia").onchange = actualizarClientes;
+    document.getElementById("condicion").onchange = actualizarClientes;
+    document.getElementById("buscar").oninput = actualizarClientes;
+
+    document.getElementById("cliente").onchange = function () {
+        const nombre = this.value;
+        const cliente = data.find(c => c.RazonSocial === nombre);
+        if (cliente && cliente.latitud && cliente.longitud) {
+            map.setView([cliente.latitud, cliente.longitud], 15);
+            markers.eachLayer(m => {
+                if (m.getLatLng().lat == cliente.latitud && m.getLatLng().lng == cliente.longitud) {
+                    m.openPopup();
+                }
+            });
+        }
+    };
+
+    // Auto-recarga cada 60 segundos
+    setInterval(async () => {
+        await cargarDatosDesdeSheet();
+        actualizarClientes();
+    }, 60000);
+};
+</script></body></html>
