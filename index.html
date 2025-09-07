@@ -1966,5 +1966,135 @@ document.addEventListener('click', (ev)=>{
 })();
 </script>
 
+
+<script>
+(function(){
+  // ===== Data readiness + fallback CSV fetch =====
+  const RR = { ready:false, baseFallback: [] };
+
+  function csvParse(text){
+    const rows = [];
+    let i=0, cur='', inside=false, row=[];
+    while(i<text.length){
+      const ch = text[i];
+      if(ch === '"' ){
+        if(inside && text[i+1] === '"'){ cur+='"'; i++; }
+        else inside = !inside;
+      } else if(ch === ',' && !inside){
+        row.push(cur); cur='';
+      } else if((ch === '\n' || ch === '\r') && !inside){
+        if(cur.length || row.length){ row.push(cur); rows.push(row); row=[]; cur=''; }
+      } else {
+        cur += ch;
+      }
+      i++;
+    }
+    if(cur.length || row.length){ row.push(cur); rows.push(row); }
+    const header = rows.shift() || [];
+    const keys = header.map(h=>String(h||'').trim());
+    return rows.map(r=>{
+      const o={};
+      for(let j=0;j<keys.length;j++){ o[keys[j]] = r[j]!==undefined ? r[j] : ''; }
+      return o;
+    });
+  }
+
+  function pick(obj, candidates){
+    for(const k of candidates){
+      if(k in obj && obj[k]!=null && obj[k]!=='' ) return obj[k];
+      const alt = Object.keys(obj).find(x=>x.toLowerCase()===k.toLowerCase());
+      if(alt) return obj[alt];
+    }
+    return undefined;
+  }
+  function normStr(s){ return String(s||'').trim(); }
+  function normDia(d){ return String(d||'').normalize('NFD').replace(/\p{Diacritic}/gu,'').toLowerCase(); }
+
+  const K = {
+    semana: ['Semana','N Semana','N_Semana','n_semana','n semana','semana'],
+    dia: ['Día','Dia','día','dia'],
+    vendedor: ['Vendedor','VENDEDOR','vendedor'],
+    gestor: ['Gestor','gestor','Gestor cartera','gestor_cartera','gestor_servicio'],
+    cod: ['Cod','Código','Codigo','codigo','cod','codigo_npg','id','ID','Id','Cod Cliente','cod cliente']
+  };
+
+  function mapRecord(x){
+    return {
+      gestor: normStr(pick(x, K.gestor) || 'NO ASIGNADO'),
+      vendedor: normStr(pick(x, K.vendedor) || ''),
+      semana: normStr(pick(x, K.semana) || ''),
+      dia: normStr(pick(x, K.dia) || ''),
+      cod: normStr(pick(x, K.cod) || '')
+    };
+  }
+
+  function getBase(){
+    if(window.STATE && Array.isArray(STATE.joined) && STATE.joined.length){
+      return STATE.joined.map(mapRecord);
+    }
+    return RR.baseFallback; // puede estar vacío si no se pudo descargar aún
+  }
+
+  function ensureFiltersPopulated(){
+    // Poblar desde getBase(), si vacío intenta fallback
+    const base = getBase();
+    if(!base.length){ return false; }
+    const selSemana = document.getElementById('rrSemana');
+    const selVend = document.getElementById('rrVendedor');
+    const selGest = document.getElementById('rrGestor');
+    function addOpts(sel, values){
+      if(!sel) return;
+      const have = new Set([...sel.options].map(o=>o.value));
+      values.forEach(v=>{
+        if(v && !have.has(v)){ const o=document.createElement('option'); o.value=v; o.textContent=v; sel.appendChild(o); }
+      });
+    }
+    const semanas = [...new Set(base.map(x=>x.semana).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'es',{numeric:true}));
+    const vendedores = [...new Set(base.map(x=>x.vendedor).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'es',{numeric:true}));
+    const gestores = [...new Set(base.map(x=>x.gestor).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'es',{numeric:true}));
+    addOpts(selSemana, semanas);
+    addOpts(selVend, vendedores);
+    addOpts(selGest, gestores);
+    return true;
+  }
+
+  async function fetchCalendarioFallback(){
+    try{
+      const url = (window.DEFAULT_CONFIG && DEFAULT_CONFIG.sources && DEFAULT_CONFIG.sources.calendario && DEFAULT_CONFIG.sources.calendario.url) || '';
+      if(!url) return;
+      const res = await fetch(url, {cache:'no-store'});
+      const txt = await res.text();
+      const rows = csvParse(txt).map(mapRecord);
+      RR.baseFallback = rows;
+    }catch(e){ console.warn('Fallback Calendario error', e); }
+  }
+
+  // Exponer hook para pantalla
+  window.__rrEnsureDataAndFilters = async function(){
+    // primer intento con lo que haya
+    if(ensureFiltersPopulated()){ RR.ready=true; return; }
+    // descarga fallback
+    await fetchCalendarioFallback();
+    if(ensureFiltersPopulated()){ RR.ready=true; return; }
+    // espera a que STATE.joined se llene
+    let tries=0;
+    while(tries<60 && !(window.STATE && Array.isArray(STATE.joined) && STATE.joined.length)){
+      await new Promise(r=>setTimeout(r,500));
+      tries++;
+    }
+    ensureFiltersPopulated();
+    RR.ready=true;
+  };
+
+  // Integrar en la navegación de la pantalla resumen
+  const _oldShow = window.__showResumenScreen;
+  window.__showResumenScreen = async function(){
+    if(typeof _oldShow==='function'){ _oldShow(); }
+    try { await window.__rrEnsureDataAndFilters(); } catch(_){}
+    try { if(typeof window.renderRR==='function') window.renderRR(); } catch(_){}
+  };
+})();
+</script>
+
 </body>
 </html>
