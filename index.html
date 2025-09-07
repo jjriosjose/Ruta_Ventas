@@ -2070,30 +2070,21 @@ document.addEventListener('click', (ev)=>{
   }
 
   // Exponer hook para pantalla
-  
-window.__rrEnsureDataAndFilters = async function(){
-  // Try immediate population
-  if(typeof ensureSemanaBaseline==='function') ensureSemanaBaseline();
-  if(typeof ensureFiltersPopulated==='function' && ensureFiltersPopulated()){
-    if(typeof ensureSemanaBaseline==='function') ensureSemanaBaseline();
-    return;
-  }
-  // Fetch fallback Calendario
-  if(typeof fetchCalendarioFallback==='function') await fetchCalendarioFallback();
-  if(typeof ensureFiltersPopulated==='function' && ensureFiltersPopulated()){
-    if(typeof ensureSemanaBaseline==='function') ensureSemanaBaseline();
-    return;
-  }
-  // Wait for STATE.joined
-  let tries=0;
-  while(tries<60 && !(window.STATE && Array.isArray(STATE.joined) && STATE.joined.length)){
-    await new Promise(r=>setTimeout(r,500));
-    tries++;
-  }
-  if(typeof ensureFiltersPopulated==='function') ensureFiltersPopulated();
-  if(typeof ensureSemanaBaseline==='function') ensureSemanaBaseline();
-};
-
+  window.__rrEnsureDataAndFilters = async function(){
+    // primer intento con lo que haya
+    if(ensureFiltersPopulated()){ RR.ready=true; return; }
+    // descarga fallback
+    await fetchCalendarioFallback();
+    if(ensureFiltersPopulated()){ RR.ready=true; return; }
+    // espera a que STATE.joined se llene
+    let tries=0;
+    while(tries<60 && !(window.STATE && Array.isArray(STATE.joined) && STATE.joined.length)){
+      await new Promise(r=>setTimeout(r,500));
+      tries++;
+    }
+    ensureFiltersPopulated();
+    RR.ready=true;
+  };
 
   // Integrar en la navegación de la pantalla resumen
   const _oldShow = window.__showResumenScreen;
@@ -2153,29 +2144,11 @@ document.addEventListener('click', (ev)=>{
 <script>
 (function(){
   // Si tras asegurar datos no hay semanas, crear rango 1..53 como fallback visual
-  
-function ensureSemanaBaseline(){
-  const sel = document.getElementById('rrSemana');
-  if(!sel) return;
-  // Reset and set only Semana 1..4
-  const keepFirst = sel.options.length ? sel.options[0] : null;
-  sel.innerHTML = '';
-  if(keepFirst){
-    sel.appendChild(keepFirst);
-    keepFirst.textContent = 'Todas';
-    keepFirst.value = '';
-  } else {
-    const first = document.createElement('option');
-    first.value = ''; first.textContent = 'Todas';
-    sel.appendChild(first);
-  }
-  for(let w=1; w<=4; w++){
-    const o = document.createElement('option');
-    o.value = String(w); o.textContent = String(w);
-    sel.appendChild(o);
-  }
-}
-
+  function ensureSemanaBaseline(){
+    const sel = document.getElementById('rrSemana');
+    if(!sel) return;
+    if(sel.options.length<=1){
+      for(let w=1; w<=53; w++){ const o=document.createElement('option'); o.value=String(w); o.textContent=String(w); sel.appendChild(o); }
     }
   }
   // esperar a que la pantalla esté visible
@@ -2186,72 +2159,6 @@ function ensureSemanaBaseline(){
     }
   });
   obs.observe(document.body, {attributes:true, childList:true, subtree:true});
-})();
-</script>
-
-
-<script>
-(function(){
-  // Fuerza rellenado de Vendedor/Gestor tras la primera renderización si quedaran vacíos
-  function enforceVendGest(){
-    const selVend = document.getElementById('rrVendedor');
-    const selGest = document.getElementById('rrGestor');
-    const needVend = selVend && selVend.options.length<=1;
-    const needGest = selGest && selGest.options.length<=1;
-    if(!needVend && !needGest) return;
-
-    // Recolectar base desde STATE.joined o fallback global si existe
-    let base = [];
-    try{
-      if(window.STATE && Array.isArray(STATE.joined) && STATE.joined.length){
-        base = STATE.joined;
-      } else if(window.RR && Array.isArray(RR.baseFallback)){
-        base = RR.baseFallback;
-      }
-    }catch(_){}
-    if(!base || !base.length) return;
-
-    function getVals(keyNames){
-      const set = new Set();
-      for(const x of base){
-        // intentar múltiples nombres de campo
-        for(const k of keyNames){
-          const foundKey = Object.keys(x).find(n=>n.toLowerCase()===k.toLowerCase());
-          if(foundKey && String(x[foundKey]).trim()){
-            set.add(String(x[foundKey]).trim());
-            break;
-          }
-        }
-      }
-      return Array.from(set).sort((a,b)=>a.localeCompare(b,'es',{numeric:true}));
-    }
-    if(needVend){
-      getVals(['Vendedor','VENDEDOR','vendedor']).forEach(v=>{
-        const o=document.createElement('option'); o.value=v; o.textContent=v; selVend.appendChild(o);
-      });
-    }
-    if(needGest){
-      getVals(['Gestor','gestor','Gestor cartera','gestor_cartera','gestor_servicio']).forEach(v=>{
-        const o=document.createElement('option'); o.value=v; o.textContent=v; selGest.appendChild(o);
-      });
-    }
-  }
-  // Ejecutar cuando se muestre la pantalla y luego tras 1s por si llega data
-  document.addEventListener('click', (ev)=>{
-    if(ev.target && ev.target.id==='btnReporteResumen'){
-      setTimeout(enforceVendGest, 300);
-      setTimeout(enforceVendGest, 1200);
-    }
-  });
-  // También al entrar por cualquier otro medio
-  if(typeof window.__showResumenScreen==='function'){
-    const old = window.__showResumenScreen;
-    window.__showResumenScreen = async function(){
-      await old();
-      setTimeout(enforceVendGest, 300);
-      setTimeout(enforceVendGest, 1200);
-    };
-  }
 })();
 </script>
 
