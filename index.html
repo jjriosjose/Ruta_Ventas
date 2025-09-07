@@ -1523,9 +1523,17 @@ document.addEventListener('click', (ev)=>{
         <label class="lbl">Gestor</label>
         <select id="rrGestor" class="input"><option value="">Todos</option></select>
       </div>
+    
+    </div>
+
+    <div id="rrKpis" class="toolbar" style="gap:12px; margin-top:10px; flex-wrap:wrap;">
+      <span class="chip">A realizar: <b id="kpiAsignadas">0</b></span>
+      <span class="chip">Realizadas: <b id="kpiHechas">0</b></span>
+      <span class="chip">Cobertura: <b id="kpiCobertura">0%</b></span>
     </div>
 
     <div style="margin-top:12px; max-height:60vh; overflow:auto; border-radius:10px;">
+
       <table class="table" id="rrTbl">
         <thead>
           <tr><th>Gestor</th><th>Semana</th><th>Día</th><th>A realizar</th><th>Realizadas</th><th>% Cobertura</th><th>Última llamada</th></tr>
@@ -1735,6 +1743,60 @@ document.addEventListener('click', (ev)=>{
     if(typeof window.__showResumenScreen === 'function'){ window.__showResumenScreen(); }
   }
 });
+</script>
+
+
+<script>
+(function(){
+  // Reintento de población de filtros cuando los datos aún no han cargado
+  let rrPopulateTries = 0;
+  function rrTryPopulateLater(){
+    rrPopulateTries += 1;
+    if(rrPopulateTries>20) return; // ~6s si 300ms
+    setTimeout(()=>{
+      const base = (window.STATE && Array.isArray(STATE.joined)) ? STATE.joined : [];
+      // solo repoblar si siguen vacíos y ya hay datos
+      const selSemana = document.getElementById('rrSemana');
+      const selVend = document.getElementById('rrVendedor');
+      const selGest = document.getElementById('rrGestor');
+      const need = (selSemana && selSemana.options.length<=1) || (selVend && selVend.options.length<=1) || (selGest && selGest.options.length<=1);
+      if(base.length && need){
+        // reutilizar populateRRFilters si existe
+        if(typeof populateRRFilters==='function'){ populateRRFilters(); renderRR(); return; }
+      }
+      // seguir intentando
+      rrTryPopulateLater();
+    }, 300);
+  }
+
+  // KPI updater hooking into renderRR if available
+  const _oldRender = window.renderRR;
+  window.renderRR = function(){
+    if(typeof _oldRender==='function'){ _oldRender(); }
+    try {
+      // leer totales de la tabla renderizada
+      const rows = [...document.querySelectorAll('#rrTbl tbody tr')].map(tr=>[...tr.children].map(td=>td.textContent));
+      let asign = 0, hechas = 0;
+      for(const r of rows){
+        asign += Number(r[3]||0);
+        hechas += Number(r[4]||0);
+      }
+      const cov = asign ? (hechas/asign*100) : (hechas?100:0);
+      const a = document.getElementById('kpiAsignadas'); if(a) a.textContent = String(asign);
+      const h = document.getElementById('kpiHechas'); if(h) h.textContent = String(hechas);
+      const c = document.getElementById('kpiCobertura'); if(c) c.textContent = cov.toFixed(1)+'%';
+    } catch(_){}
+  };
+
+  // Al mostrar la pantalla, si no hay opciones, reintenta hasta que STATE.joined esté listo
+  const _oldShow = window.__showResumenScreen;
+  window.__showResumenScreen = function(){
+    if(typeof _oldShow==='function'){ _oldShow(); }
+    // Si quedó vacío, reintenta popular
+    rrPopulateTries = 0;
+    rrTryPopulateLater();
+  };
+})();
 </script>
 
 </body>
