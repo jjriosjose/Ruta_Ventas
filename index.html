@@ -444,64 +444,55 @@ details > summary{
   </div>
 
   
-  <!-- Modal Reporte Resumen (KPI) -->
-  <div id="modalRepResumen" class="modal hidden" aria-modal="true" role="dialog">
-    <div class="card" style="width:min(1100px,96vw);">
-      <h3 class="title">📈 Reporte de llamadas — Resumen</h3>
-      <div class="grid grid-3">
-        <div><label>Semana</label>
-          <select id="rsSemana">
-            <option value="">Todas</option>
-            <option value="1">1</option>
-            <option value="2">2</option>
-            <option value="3">3</option>
-            <option value="4">4</option>
-          </select>
-        </div>
-        <div><label>Día</label>
-          <select id="rsDia">
-            <option value="">Todos</option>
-            <option value="lunes">Lunes</option>
-            <option value="martes">Martes</option>
-            <option value="miercoles">Miércoles</option>
-            <option value="jueves">Jueves</option>
-            <option value="viernes">Viernes</option>
-            <option value="sabado">Sábado</option>
-            <option value="domingo">Domingo</option>
-          </select>
-        </div>
-        <div><label>Vendedor</label><select id="rsVendedor"><option value="">Todos</option></select></div>
-        <div><label>Gestor</label><select id="rsGestor"><option value="">Todos</option></select></div>
-        <div style="display:flex;align-items:end;justify-content:flex-end;">
-          <button id="rsExport" class="btn">⬇ Exportar CSV</button>
+  <button id="btnOpenResumenSem" class="btn" style="margin-left:8px;">📊 Resumen (Sem)</button>
+
+  
+  <!-- === Pantalla: Reporte de Llamadas — Resumen (Semanal) === -->
+  <section id="screenResumenSem" style="display:none;">
+    <div class="card" style="margin:12px auto; width:min(1180px,96vw);">
+      <div class="toolbar" style="gap:10px; align-items:center; flex-wrap:wrap;">
+        <h3 style="margin:6px 12px 6px 0;">📈 Reporte de Llamadas — Resumen (Semanal)</h3>
+        <div style="display:flex; gap:10px; flex-wrap:wrap; margin-left:auto">
+          <div><label>Semana</label>
+            <select id="rwSemana">
+              <option value="">Todas</option>
+              <option value="1">1</option>
+              <option value="2">2</option>
+              <option value="3">3</option>
+              <option value="4">4</option>
+            </select>
+          </div>
+          <div><label>Vendedor</label><select id="rwVendedor"><option value="">Todos</option></select></div>
+          <div><label>Gestor</label><select id="rwGestor"><option value="">Todos</option></select></div>
+          <button id="rwExport" class="btn">⬇ Exportar CSV</button>
+          <button id="rwVolver" class="btn btn-soft">← Volver</button>
         </div>
       </div>
 
-      <div class="toolbar" style="margin-top:6px;">
-        <span class="chip">A realizar: <strong id="rsKpiPlan">0</strong></span>
-        <span class="chip">Realizadas: <strong id="rsKpiDone">0</strong></span>
-        <span class="chip">% Cobertura: <strong id="rsKpiCov">0%</strong></span>
-        <div id="rsDebug" class="muted" style="margin-left:auto;"></div>
+      <div class="toolbar" style="gap:12px; flex-wrap:wrap; margin-top:6px;">
+        <span class="chip">A realizar: <strong id="rwPlan">0</strong></span>
+        <span class="chip">Realizadas: <strong id="rwDone">0</strong></span>
+        <span class="chip">% Cobertura: <strong id="rwCov">0%</strong></span>
+        <span id="rwInfo" class="muted"></span>
       </div>
 
-      <div style="margin-top:8px; max-height:60vh; overflow:auto; border-radius:10px;">
-        <table class="table" id="rsTbl">
+      <div style="margin-top:8px; max-height:calc(84vh - 160px); overflow:auto; border-radius:12px;">
+        <table class="table" id="rwTbl">
           <thead>
             <tr>
-              <th>Gestor</th><th>Semana</th><th>Día</th>
-              <th>A realizar</th><th>Realizadas</th><th>% Cobertura</th><th>Última llamada</th>
+              <th>Gestor</th>
+              <th>Semana</th>
+              <th>A realizar</th>
+              <th>Realizadas</th>
+              <th>% Cobertura</th>
+              <th>Última llamada</th>
             </tr>
           </thead>
           <tbody></tbody>
         </table>
       </div>
-
-      <div class="toolbar" style="justify-content:flex-end; margin-top:10px;">
-        <button id="btnRsCerrar" class="btn btn-soft">Cerrar</button>
-      </div>
     </div>
-  </div>
-
+  </section>
 
   <div class="errbar" id="errbar"></div>
 
@@ -2029,223 +2020,196 @@ document.addEventListener('click', (ev)=>{
 
 <script>
 (function(){
-  // ===== Helpers =====
+  // === Config ===
+  const CAL_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vSGjr-XdLSamHpGQfoORmLfntJbLd-UbFpD7NdMM14x2JdMhxOYHTWQBlhYCMDu0ZTy3AYS-1Y3q91Y/pub?gid=223681507&single=true&output=csv";
+
+  // === Helpers ===
   function $(sel, root){ return (root||document).querySelector(sel); }
   function $all(sel, root){ return Array.from((root||document).querySelectorAll(sel)); }
   function norm(s){ return String(s||'').trim(); }
   function normDia(d){ return String(d||'').normalize('NFD').replace(/\p{Diacritic}/gu,'').toLowerCase(); }
-  function weekOfMonth(date){ if(!(date instanceof Date) || isNaN(date)) return ''; const w = 1 + Math.floor((date.getDate()-1)/7); return String(Math.min(Math.max(w,1),4)); }
-  function csvEscape(v){ if(v==null) return ''; const s=String(v); return (s.includes(',')||s.includes('\"')||s.includes('\n'))?('\"'+s.replace(/\"/g,'\"\"')+'\"'):s; }
+  function csvEscape(v){ if(v==null) return ''; const s=String(v); return (s.includes(',')||s.includes('"')||s.includes('\n'))?('"'+s.replace(/"/g,'""')+'"'):s; }
+  function weekOfMonth(date){ if(!(date instanceof Date)||isNaN(date)) return ''; const w = 1 + Math.floor((date.getDate()-1)/7); return String(Math.min(Math.max(w,1),4)); }
 
-  // ====== 1) Registrar llamada: añadir campo Semana (1..4) ======
-  function ensureSemanaInCallModal(){
-    const modal = $('#modalLlamada'); if(!modal) return;
-    if($('#callSemana', modal)) return;
-    const grid = modal.querySelector('.grid.grid-2') || modal;
-    const box = document.createElement('div');
-    box.innerHTML = '<label>Semana (1-4)</label><select id="callSemana"><option value="">(auto)</option><option>1</option><option>2</option><option>3</option><option>4</option></select>';
-    // Insert after "Fecha y hora"
-    const fecha = $('#callFechaHora'); 
-    (fecha && fecha.parentElement) ? fecha.parentElement.insertAdjacentElement('afterend', box) : grid.appendChild(box);
-  }
-  function presetSemanaCall(){
-    const sel = $('#callSemana'); const fh = $('#callFechaHora'); if(!sel || !fh) return;
-    const d = new Date(fh.value || Date.now()); sel.value = weekOfMonth(d);
-  }
-  document.addEventListener('click', (ev)=>{
-    if(ev.target && ev.target.id==='btnRegistrar'){
-      setTimeout(()=>{ ensureSemanaInCallModal(); presetSemanaCall(); }, 80);
+  // CSV minimal parser
+  function parseCSV(text){
+    const rows=[]; let row=[], cur='', q=false;
+    for(let i=0;i<text.length;i++){
+      const ch=text[i];
+      if(ch=='"'){ if(q && text[i+1]=='"'){ cur+='"'; i++; } else q=!q; }
+      else if(ch==',' && !q){ row.push(cur); cur=''; }
+      else if((ch=='\n'||ch=='\r') && !q){ if(cur.length||row.length){ row.push(cur); rows.push(row); row=[]; cur=''; } }
+      else cur+=ch;
     }
-  });
-  // Si el guardado original corre aparte, reforzamos que la última llamada tenga 'semana'
-  function stampSemanaOnLastCall(){
-    try{
-      const arr = JSON.parse(localStorage.getItem('llamadas_records') || '[]');
-      if(Array.isArray(arr) && arr.length){
-        const last = arr[arr.length-1];
-        if(!last.semana){
-          const fh = last.fecha_hora || last.fecha || '';
-          const d = new Date(fh);
-          last.semana = $('#callSemana') ? ($('#callSemana').value || weekOfMonth(d)) : weekOfMonth(d);
-          localStorage.setItem('llamadas_records', JSON.stringify(arr));
-        }
-      }
-    }catch(_){}
-  }
-  document.addEventListener('click', (ev)=>{
-    if(ev.target && ev.target.id==='btnCallGuardar'){
-      setTimeout(stampSemanaOnLastCall, 300);
-    }
-  });
-
-  // ====== 2) Reporte de llamadas (DETALLE): conservar filtros y añadir Semana sin romper UI ======
-  function ensureSemanaFilterInReport(){
-    const modal = $('#modalReporte'); if(!modal) return;
-    if($('#repSemana', modal)) return;
-    const grid = modal.querySelector('.grid.grid-3') || modal;
-    const holder = document.createElement('div');
-    holder.innerHTML = '<label>Semana</label><select id="repSemana"><option value="">(todas)</option><option>1</option><option>2</option><option>3</option><option>4</option></select>';
-    grid.appendChild(holder);
-  }
-  function computeWeekFromRow(tr){
-    const td = tr.cells[0]; if(!td) return '';
-    const txt = td.textContent || ''; const d = new Date(txt);
-    if(isNaN(d)) return '';
-    return weekOfMonth(d);
-  }
-  function patchReportTable(){
-    const tbl = $('#repTbl'); if(!tbl || !tbl.tHead) return;
-    const heads = Array.from(tbl.tHead.rows[0].cells).map(c=>c.textContent.trim().toLowerCase());
-    if(!heads.includes('semana')){
-      // insert "Semana" after Fecha/Hora
-      const th = document.createElement('th'); th.textContent = 'Semana';
-      const trh = tbl.tHead.rows[0];
-      trh.insertBefore(th, trh.cells[1] || null);
-      // add cell for each row
-      $all('tbody tr', tbl).forEach(tr=>{
-        const cell = document.createElement('td'); cell.textContent = computeWeekFromRow(tr) || '-';
-        tr.insertBefore(cell, tr.cells[1] || null);
-      });
-    } else {
-      // refresh values
-      $all('tbody tr', tbl).forEach(tr=>{
-        const idx = 1; // second column is Semana
-        if(tr.cells[idx]) tr.cells[idx].textContent = computeWeekFromRow(tr) || '-';
-      });
-    }
-  }
-  function applyWeekFilterToTable(){
-    const sel = $('#repSemana'); const wk = sel ? sel.value : '';
-    const tbl = $('#repTbl'); if(!tbl) return;
-    $all('tbody tr', tbl).forEach(tr=>{
-      const w = computeWeekFromRow(tr);
-      tr.style.display = (!wk || wk === w) ? '' : 'none';
+    if(cur.length||row.length){ row.push(cur); rows.push(row); }
+    if(!rows.length) return [];
+    const head = rows.shift().map(h=>String(h||'').trim());
+    return rows.filter(r=>r.some(x=>String(x||'').trim()!=='')).map(r=>{
+      const o={}; for(let j=0;j<head.length;j++){ o[head[j]]= r[j]!==undefined ? r[j] : ''; } return o;
     });
   }
-  document.addEventListener('click', (ev)=>{
-    if(ev.target && (ev.target.id==='btnReporte' || ev.target.matches('[data-open="modalReporte"]'))){
-      setTimeout(()=>{ ensureSemanaFilterInReport(); patchReportTable(); applyWeekFilterToTable(); }, 200);
+  function pick(o, names){
+    const ks = Object.keys(o);
+    for(const n of names){
+      if(n in o && o[n]!=null) return o[n];
+      const f = ks.find(k=>k.toLowerCase()===n.toLowerCase());
+      if(f) return o[f];
     }
-  });
-  document.addEventListener('change', (ev)=>{
-    if(ev.target && ev.target.id==='repSemana'){ applyWeekFilterToTable(); }
-  });
+    return '';
+  }
 
-  // ====== 3) Reporte Resumen (modal propio, sin tocar el de Reporte) ======
-  function uniq(arr){ return Array.from(new Set(arr)).filter(Boolean).sort((a,b)=> String(a).localeCompare(String(b),'es',{numeric:true})); }
-  function parseCalls(){
-    let calls = []; try{ calls = JSON.parse(localStorage.getItem('llamadas_records') || '[]'); }catch(_){}
+  // Load Calendario plan
+  let PLAN = []; // {gestor, vendedor, semana, cod?}
+  async function loadPlan(){
+    try{
+      const res = await fetch(CAL_URL, {cache:'no-store', mode:'cors'});
+      const txt = await res.text();
+      const rows = parseCSV(txt);
+      PLAN = rows.map(r=> ({
+        gestor: norm(pick(r, ['gestor_servicio','Gestor','gestor'])) || 'NO ASIGNADO',
+        vendedor: norm(pick(r, ['vendedor','Vendedor','VENDEDOR'])),
+        semana: norm(pick(r, ['SEMANA','Semana','semana'])),
+        cod: norm(pick(r, ['Cod Empresa','Cod','Código','Codigo','cod','ID']))
+      })).filter(x=>x.semana);
+    }catch(e){
+      console.warn('No se pudo cargar Calendario', e);
+      PLAN = [];
+    }
+  }
+
+  // Calls
+  function getCalls(){
+    let calls = [];
+    try{ calls = JSON.parse(localStorage.getItem('llamadas_records') || '[]'); }catch(_){}
     if(window.STATE && Array.isArray(STATE.calls)) calls = calls.concat(STATE.calls);
     return calls.map(c=>{
       const d = new Date(c.fecha_hora || c.fecha || '');
-      const dia = d.toLocaleDateString('es-ES',{weekday:'long'});
-      const semana = c.semana || weekOfMonth(d);
       return {
         gestor: c.gestor_servicio || c.gestor || '',
         vendedor: c.vendedor || c.Vendedor || '',
-        dia: dia, semana: semana,
-        fecha: d, cod: c.cod || c.codigo || c['Cod Empresa'] || ''
+        semana: c.semana || weekOfMonth(d),
+        fecha: d
       };
     });
   }
-  function parsePlan(){
-    // Tomar de STATE.calendario; tolerante a encabezados
-    const plan = (window.STATE && Array.isArray(STATE.calendario) ? STATE.calendario : []).map(r=>{
-      const g = r['gestor_servicio']||r['Gestor']||r['GESTOR_SERVICIO']||'';
-      const v = r['vendedor']||r['Vendedor']||r['VENDEDOR']||'';
-      const d = r['DIA']||r['Dia']||r['día']||r['dia']||'';
-      const s = r['SEMANA']||r['Semana']||r['semana']||'';
-      return { gestor:g, vendedor:v, dia:d, semana:String(s||'').trim() };
-    }).filter(x=>x.dia && x.semana);
-    return plan;
+
+  // Populate filters
+  function uniq(arr){ return Array.from(new Set(arr.filter(Boolean))).sort((a,b)=>String(a).localeCompare(String(b),'es',{numeric:true})); }
+  function populateFilters(){
+    const vend = uniq(PLAN.map(p=>p.vendedor));
+    const gest = uniq(PLAN.map(p=>p.gestor));
+    const fvend = $('#rwVendedor'); const fgest = $('#rwGestor');
+    fvend.innerHTML = '<option value="">Todos</option>' + vend.map(v=>'<option>'+v+'</option>').join('');
+    fgest.innerHTML = '<option value="">Todos</option>' + gest.map(v=>'<option>'+v+'</option>').join('');
   }
-  function openResumen(){
-    const m = $('#modalRepResumen'); if(!m) return;
-    m.classList.remove('hidden'); m.style.display='flex'; document.body.classList.add('no-scroll');
-    // Poblado de selects
-    const plan = parsePlan();
-    const calls = parseCalls();
-    const vendedores = uniq(plan.map(p=>p.vendedor).concat(calls.map(c=>c.vendedor)));
-    const gestores = uniq(plan.map(p=>p.gestor).concat(calls.map(c=>c.gestor)));
-    const fill = (sel, arr, first)=>{ sel.innerHTML = '<option value="">' + first + '</option>' + arr.map(v=>'<option>'+v+'</option>').join(''); };
-    fill($('#rsVendedor'), vendedores, 'Todos');
-    fill($('#rsGestor'), gestores, 'Todos');
-    renderResumen();
-  }
-  function closeResumen(){
-    const m = $('#modalRepResumen'); if(!m) return; m.classList.add('hidden'); m.style.display='none'; document.body.classList.remove('no-scroll');
-  }
-  function renderResumen(){
-    const fSemana = $('#rsSemana').value || ''; const fDia = $('#rsDia').value || '';
-    const fVend = $('#rsVendedor').value || ''; const fGest = $('#rsGestor').value || '';
-    const plan = parsePlan().filter(x=>{
-      if(fSemana && String(x.semana)!==String(fSemana)) return false;
-      if(fDia && normDia(x.dia)!==normDia(fDia)) return false;
+
+  // Render table (aggregate by semana y gestor; NO por día)
+  function render(){
+    const fSem = $('#rwSemana').value || '';
+    const fVend = $('#rwVendedor').value || '';
+    const fGest = $('#rwGestor').value || '';
+
+    const planF = PLAN.filter(x=>{
+      if(fSem && String(x.semana)!==String(fSem)) return false;
       if(fVend && x.vendedor!==fVend) return false;
       if(fGest && x.gestor!==fGest) return false;
       return true;
     });
-    const calls = parseCalls().filter(x=>{
-      if(fSemana && String(x.semana)!==String(fSemana)) return false;
-      if(fDia && normDia(x.dia)!==normDia(fDia)) return false;
-      if(fVend && x.vendedor!==fVend) return false;
-      if(fGest && x.gestor!==fGest) return false;
-      return true;
-    });
-    // Agrupar plan por gestor-semana-dia
-    const planMap = new Map();
-    plan.forEach(p=>{
-      const k = p.gestor+'|'+p.semana+'|'+normDia(p.dia);
+
+    // Agrupar Plan por (gestor, semana)
+    const planMap = new Map(); // key: gestor|semana => count
+    planF.forEach(p=>{
+      const k = p.gestor+'|'+p.semana;
       planMap.set(k, (planMap.get(k)||0)+1);
     });
-    // Agrupar realizadas (gestor-semana-dia por fecha de llamada)
-    const doneMap = new Map(), lastMap = new Map();
-    calls.forEach(c=>{
-      const k = c.gestor+'|'+c.semana+'|'+normDia(c.dia);
-      doneMap.set(k, (doneMap.get(k)||0)+1);
-      const prev = lastMap.get(k); if(!prev || prev < c.fecha) lastMap.set(k, c.fecha);
+
+    // Realizadas: agrupar por (gestor, semana)
+    const calls = getCalls().filter(c=>{
+      if(fSem && String(c.semana)!==String(fSem)) return false;
+      if(fVend && c.vendedor!==fVend) return false;
+      if(fGest && c.gestor!==fGest) return false;
+      return true;
     });
-    // Unir claves
+    const doneMap = new Map(); const lastMap = new Map();
+    calls.forEach(c=>{
+      const k = c.gestor+'|'+(c.semana||'');
+      doneMap.set(k, (doneMap.get(k)||0)+1);
+      const prev = lastMap.get(k);
+      if(!prev || prev < c.fecha) lastMap.set(k, c.fecha);
+    });
+
     const keys = new Set([...planMap.keys(), ...doneMap.keys()]);
     const rows = [];
     keys.forEach(k=>{
-      const [gestor, semana, dia] = k.split('|');
-      const planCount = planMap.get(k)||0;
-      const doneCount = doneMap.get(k)||0;
-      const pct = planCount ? (doneCount/planCount*100) : (doneCount?100:0);
+      const [gestor, semana] = k.split('|');
+      const a = planMap.get(k) || 0;
+      const r = doneMap.get(k) || 0;
+      const pct = a ? (r/a*100) : (r?100:0);
       const last = lastMap.get(k) ? lastMap.get(k).toLocaleString() : '-';
-      rows.push({gestor, semana, dia, planCount, doneCount, pct, last});
+      rows.push({gestor, semana, a, r, pct, last});
     });
-    rows.sort((a,b)=> a.gestor.localeCompare(b.gestor,'es',{numeric:true}) || String(a.semana).localeCompare(String(b.semana),'es',{numeric:true}) || String(a.dia).localeCompare(String(b.dia),'es',{numeric:true}));
-    const tb = $('#rsTbl tbody'); tb.innerHTML = rows.map(r=>`<tr>
-      <td>${r.gestor||'-'}</td><td>${r.semana||'-'}</td><td>${r.dia||'-'}</td>
-      <td>${r.planCount}</td><td>${r.doneCount}</td><td>${r.pct.toFixed(1)}%</td><td>${r.last}</td>
-    </tr>`).join('');
+    rows.sort((x,y)=> x.gestor.localeCompare(y.gestor,'es',{numeric:true}) || String(x.semana).localeCompare(String(y.semana),'es',{numeric:true}));
+
+    const tb = $('#rwTbl tbody'); tb.innerHTML='';
+    const frag = document.createDocumentFragment();
+    rows.forEach(row=>{
+      const tr = document.createElement('tr');
+      function td(t){ const el=document.createElement('td'); el.textContent = t; return el; }
+      tr.appendChild(td(row.gestor||'-'));
+      tr.appendChild(td(row.semana||'-'));
+      tr.appendChild(td(row.a));
+      tr.appendChild(td(row.r));
+      tr.appendChild(td(row.pct.toFixed(1)+'%'));
+      tr.appendChild(td(row.last));
+      frag.appendChild(tr);
+    });
+    tb.appendChild(frag);
+
     // KPIs
-    const totalPlan = rows.reduce((a,b)=>a+b.planCount,0);
-    const totalDone = rows.reduce((a,b)=>a+b.doneCount,0);
-    const cov = totalPlan ? (totalDone/totalPlan*100) : (totalDone?100:0);
-    $('#rsKpiPlan').textContent = String(totalPlan);
-    $('#rsKpiDone').textContent = String(totalDone);
-    $('#rsKpiCov').textContent = cov.toFixed(1)+'%';
-    $('#rsDebug').textContent = `Plan: ${plan.length} filas · Llamadas: ${calls.length}`;
+    const totalA = rows.reduce((s,x)=>s+x.a,0);
+    const totalR = rows.reduce((s,x)=>s+x.r,0);
+    const cov = totalA ? (totalR/totalA*100) : (totalR?100:0);
+    $('#rwPlan').textContent = String(totalA);
+    $('#rwDone').textContent = String(totalR);
+    $('#rwCov').textContent  = cov.toFixed(1)+'%';
+    $('#rwInfo').textContent = `Plan: ${planF.length} filas · Llamadas: ${calls.length}`;
   }
-  function exportResumen(){
-    const rows = $all('#rsTbl tbody tr').map(tr=> Array.from(tr.cells).map(td=> td.textContent) );
-    const headers = Array.from($('#rsTbl thead tr').cells).map(th=>th.textContent);
+
+  // Export CSV
+  function exportCSV(){
+    const headers = ['Gestor','Semana','A realizar','Realizadas','% Cobertura','Última llamada'];
+    const rows = $all('#rwTbl tbody tr').map(tr=> Array.from(tr.cells).map(td=> td.textContent));
     const csv = [headers.map(csvEscape).join(',')].concat(rows.map(r=> r.map(csvEscape).join(','))).join('\n');
-    const blob = new Blob([csv],{type:'text/csv;charset=utf-8;'});
-    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'reporte_resumen.csv'; a.click(); URL.revokeObjectURL(a.href);
+    const blob = new Blob([csv], {type:'text/csv;charset=utf-8;'});
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'reporte_resumen_semanal.csv'; a.click(); URL.revokeObjectURL(a.href);
   }
-  // Buttons
+
+  // Screen toggle
+  function showResumen(){
+    const main = $('#container, #app, main') || document.body;
+    const scr = $('#screenResumenSem');
+    if(main && scr){ main.style.display='none'; scr.style.display='block'; }
+  }
+  function backFromResumen(){
+    const main = $('#container, #app, main') || document.body;
+    const scr = $('#screenResumenSem');
+    if(main && scr){ scr.style.display='none'; main.style.display='block'; }
+  }
+
+  // Bindings
   document.addEventListener('click', (ev)=>{
-    if(ev.target && ev.target.id==='btnReporteResumen'){ ev.stopPropagation(); ev.preventDefault(); setTimeout(openResumen, 50); }
-    if(ev.target && ev.target.id==='btnRsCerrar'){ closeResumen(); }
+    if(ev.target && ev.target.id==='btnOpenResumenSem'){
+      ev.preventDefault(); ev.stopPropagation();
+      (async ()=>{
+        await loadPlan(); populateFilters(); render(); showResumen();
+      })();
+    }
+    if(ev.target && ev.target.id==='rwVolver'){ backFromResumen(); }
+    if(ev.target && ev.target.id==='rwExport'){ exportCSV(); }
   });
   document.addEventListener('change', (ev)=>{
-    if(ev.target && ['rsSemana','rsDia','rsVendedor','rsGestor'].includes(ev.target.id)){ renderResumen(); }
+    if(ev.target && ['rwSemana','rwVendedor','rwGestor'].includes(ev.target.id)){ render(); }
   });
-  $('#rsExport') && $('#rsExport').addEventListener('click', exportResumen);
 })();
 </script>
 
