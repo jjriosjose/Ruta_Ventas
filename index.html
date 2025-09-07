@@ -170,8 +170,7 @@ details > summary{
         <span class="chip">Usuarios: <span id="usersCount">0</span></span>
         <button id="btnOpenConfig" class="btn btn-soft">⚙️ Configurar</button>
       
-<button id="btnReporteResumen" class="btn btn-soft">Reporte (Resumen)</button>
-<button id="btnReporteResumen" class="btn btn-soft">Reporte (Resumen)</button></div>
+</div>
     </section>
 
     <!-- APP -->
@@ -444,7 +443,7 @@ details > summary{
   </div>
 
   
-  <button id="btnOpenResumenSem" class="btn" style="margin-left:8px;">📊 Resumen (Sem)</button>
+  <button id="btnOpenResumenSem" class="btn" style="margin-left:8px; display:none;">📊 Resumen (Sem)</button>
 
   
   <!-- === Pantalla: Reporte de Llamadas — Resumen (Semanal) === -->
@@ -835,7 +834,7 @@ function exportAgendaCSV(){
 }
 
 // ======================= LOGIN =======================
-function doLogin(){ const u=val('loginUser').trim(), p=val('loginPass'); if(!u||!p){ showErr('Ingrese usuario y contraseña.'); return; } const ok=STATE.users.find(x=> norm(x.Usuario)===norm(u) && String(x.Password)===String(p) ); if(!ok){ showErr('Usuario o contraseña incorrectos.'); return; } STATE.currentUser = ok; document.getElementById('login').classList.add('hidden'); document.getElementById('app').classList.remove('hidden'); setTimeout(()=>STATE.map&&STATE.map.invalidateSize(), 50); applyFilters(); }
+function doLogin(){ const u=val('loginUser').trim(), p=val('loginPass'); if(!u||!p){ showErr('Ingrese usuario y contraseña.'); return; try{var b=document.getElementById('btnOpenResumenSem'); if(b) b.style.display='';}catch(e){};} const ok=STATE.users.find(x=> norm(x.Usuario)===norm(u) && String(x.Password)===String(p) ); if(!ok){ showErr('Usuario o contraseña incorrectos.'); return; } STATE.currentUser = ok; document.getElementById('login').classList.add('hidden'); document.getElementById('app').classList.remove('hidden'); setTimeout(()=>STATE.map&&STATE.map.invalidateSize(), 50); applyFilters(); }
 
 // ======================= CONFIG MODAL =======================
 function openConfig(){ document.getElementById('cfgMode').value = CONFIG.mode; document.getElementById('cfgUsuarios').value = CONFIG.sheets.usuarios || ''; document.getElementById('cfgClientes').value = CONFIG.sheets.clientes || ''; document.getElementById('cfgCalendario').value = CONFIG.sheets.calendario || ''; document.getElementById('cfgExcluirVendedores').value = (CONFIG.excluirVendedores||[]).join('\\n'); document.getElementById('cfgStatus').textContent = ''; const m=document.getElementById('modalConfig'); m.classList.remove('hidden'); m.style.display='flex'; }
@@ -1534,10 +1533,11 @@ document.addEventListener('click', (ev)=>{
 <script>
 document.addEventListener('click', (ev)=>{
   if(ev.target && ev.target.id === 'btnReporteResumen'){
-    if(typeof window.openReporte === 'function'){ 
-      window.openReporte();
-      if(typeof window.__repShowResumen === 'function') window.__repShowResumen();
-    }
+    ev.preventDefault(); ev.stopPropagation();
+    (async ()=>{
+      try{ await loadPlan(); populateFilters(); render(); }catch(_){}
+      if(typeof showResumen==='function') showResumen();
+    })();
   }
 });
 </script>
