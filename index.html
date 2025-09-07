@@ -170,8 +170,8 @@ details > summary{
         <span class="chip">Usuarios: <span id="usersCount">0</span></span>
         <button id="btnOpenConfig" class="btn btn-soft">⚙️ Configurar</button>
       
-<button id="btnReporteResumen" class="btn btn-soft">Reporte (Resumen)</button>
-<button id="btnReporteResumen" class="btn btn-soft">Reporte (Resumen)</button></div>
+<button id="btnRepResumen" class="btn btn-soft">Reporte (Resumen)</button>
+<button id="btnRepResumen" class="btn btn-soft">Reporte (Resumen)</button></div>
     </section>
 
     <!-- APP -->
@@ -183,7 +183,7 @@ details > summary{
             <button id="btnAgenda" class="btn btn-soft">🗓️ Agenda</button>
             <button id="btnRegistrar" class="btn btn-soft" disabled>📝 Registrar llamada</button>
             <button id="btnReporte" class="btn btn-soft">📊 Reporte</button>
-<button id="btnReporteResumen" class="btn btn-soft">Reporte (Resumen)</button>
+<button id="btnRepResumen" class="btn btn-soft">Reporte (Resumen)</button>
             <button id="btnFicha" class="btn btn-soft">👁️ Ver ficha</button>
             <button id="btnNuevoCliente" class="btn btn-soft">➕ Nuevo cliente</button>
             <button id="btnExport" class="btn">⭳ Exportar CSV</button>
@@ -2662,6 +2662,216 @@ function ensureSemanaBaseline(){
       setTimeout(bootResumen, 0);
     }
   });
+})();
+</script>
+
+
+<script>
+// Intercept any legacy clicks that might reopen/close the old modal
+document.addEventListener('click', function(ev){
+  const t = ev.target;
+  if(!t) return;
+  if(t.id === 'btnReporteResumen'){
+    ev.preventDefault(); ev.stopPropagation();
+    if(typeof window.__showResumenScreen==='function'){ window.__showResumenScreen(); }
+  }
+}, true);
+</script>
+
+
+<script>
+(function(){
+  const BTN_ID = 'btnRepResumen';
+  const CAL_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vSGjr-XdLSamHpGQfoORmLfntJbLd-UbFpD7NdMM14x2JdMhxOYHTWQBlhYCMDu0ZTy3AYS-1Y3q91Y/pub?gid=223681507&single=true&output=csv";
+  let PLAN_ALL = [];   // todas filas mapeadas (aunque no tengan COD)
+  let PLAN_IDX_BY_COD = new Map();
+  let BOOTED = false;
+
+  function norm(s){ return String(s||'').trim(); }
+  function normDia(d){ return String(d||'').normalize('NFD').replace(/\p{Diacritic}/gu,'').toLowerCase(); }
+
+  function csvParse(text){
+    const rows = [];
+    let row = [], cur = '', q=false;
+    for(let i=0;i<text.length;i++){
+      const ch = text[i];
+      if(ch === '"'){
+        if(q && text[i+1] === '"'){ cur+='"'; i++; }
+        else q = !q;
+      } else if(ch === ',' && !q){
+        row.push(cur); cur='';
+      } else if((ch === '\\n' || ch === '\\r') && !q){
+        if(cur.length || row.length){ row.push(cur); rows.push(row); row=[]; cur=''; }
+      } else {
+        cur += ch;
+      }
+    }
+    if(cur.length || row.length){ row.push(cur); rows.push(row); }
+    if(rows.length===0) return [];
+    const header = rows.shift().map(h=>String(h||'').trim());
+    return rows.filter(r=>r.some(x=>String(x||'').trim()!=='')).map(r=>{
+      const o={};
+      for(let j=0;j<header.length;j++){ o[header[j]] = r[j]!==undefined ? r[j] : ''; }
+      return o;
+    });
+  }
+
+  function pick(obj, names){
+    const keys = Object.keys(obj);
+    for(const n of names){
+      if(n in obj && obj[n]!=null) return obj[n];
+      const f = keys.find(k=>k.toLowerCase()===n.toLowerCase());
+      if(f) return obj[f];
+    }
+    return '';
+  }
+
+  function mapCalRow(x){
+    const cod = norm(pick(x,['Cod','Código','Codigo','cod','ID','Id','Cod Cliente','CODIGO','codigo_npg']));
+    const gestor = norm(pick(x,['Gestor','gestor','Gestor cartera','gestor_cartera','GESTOR']));
+    const vendedor = norm(pick(x,['Vendedor','VENDEDOR','vendedor','VENDEDOR(A)']));
+    const semana = norm(pick(x,['Semana','N Semana','N_Semana','semana','SEMANA']));
+    const dia = norm(pick(x,['Día','Dia','día','dia','DIA']));
+    return { cod, gestor: gestor || 'NO ASIGNADO', vendedor, semana, dia };
+  }
+
+  async function loadCalendario(){
+    const res = await fetch(CAL_URL, {cache:'no-store', mode:'cors'});
+    const txt = await res.text();
+    const rows = csvParse(txt).map(mapCalRow);
+    PLAN_ALL = rows; // NO filtramos por cod para filtros/plan
+    PLAN_IDX_BY_COD = new Map(rows.filter(r=>r.cod).map(r=>[r.cod, r]));
+  }
+
+  function ensureSemana14(){
+    const sel = document.getElementById('rrSemana');
+    if(!sel) return;
+    const first = sel.options[0] || (function(){const o=document.createElement('option'); o.value=''; o.textContent='Todas'; sel.appendChild(o); return o;})();
+    sel.innerHTML=''; sel.appendChild(first); first.value=''; first.textContent='Todas';
+    for(let w=1; w<=4; w++){ const o=document.createElement('option'); o.value=String(w); o.textContent=String(w); sel.appendChild(o); }
+  }
+
+  function populateVG(){
+    const selVend = document.getElementById('rrVendedor');
+    const selGest = document.getElementById('rrGestor');
+    function fill(sel, values, placeholder){
+      if(!sel) return;
+      const first = document.createElement('option'); first.value=''; first.textContent=placeholder;
+      sel.innerHTML=''; sel.appendChild(first);
+      [...new Set(values.filter(v=>!!v))].sort((a,b)=>a.localeCompare(b,'es',{numeric:true}))
+        .forEach(v=>{ const o=document.createElement('option'); o.value=v; o.textContent=v; sel.appendChild(o); });
+    }
+    fill(selVend, PLAN_ALL.map(r=>r.vendedor), 'Todos');
+    fill(selGest, PLAN_ALL.map(r=>r.gestor), 'Todos');
+  }
+
+  function getCalls(){
+    let calls = [];
+    try{ calls = JSON.parse(localStorage.getItem('llamadas_records') || '[]'); }catch(_){}
+    if(window.STATE && Array.isArray(STATE.calls)) calls = calls.concat(STATE.calls);
+    return calls;
+  }
+
+  function buildPlanIndex(rows){
+    const map = new Map();
+    for(const r of rows){
+      const k = r.gestor+'||'+r.semana+'||'+normDia(r.dia);
+      const it = map.get(k) || {gestor:r.gestor, semana:r.semana, dia:r.dia, asignados:0};
+      it.asignados += 1;
+      map.set(k, it);
+    }
+    return map;
+  }
+
+  function buildDoneIndex(){
+    const map = new Map();
+    for(const c of getCalls()){
+      const cod = norm(c.cod || c.codigo || c.cod_cliente || c.Cod || '');
+      const plan = PLAN_IDX_BY_COD.get(cod);
+      if(!plan) continue;
+      const k = plan.gestor+'||'+plan.semana+'||'+normDia(plan.dia);
+      const it = map.get(k) || {gestor:plan.gestor, semana:plan.semana, dia:plan.dia, realizadas:0, last:null};
+      it.realizadas += 1;
+      const d = new Date(c.fecha_hora||c.fecha||c.timestamp||'');
+      if(!isNaN(d)) it.last = (!it.last || new Date(it.last) < d) ? d.toISOString() : it.last;
+      map.set(k, it);
+    }
+    return map;
+  }
+
+  function render(){
+    const fSemana = (document.getElementById('rrSemana')||{}).value || '';
+    const fDia = (document.getElementById('rrDia')||{}).value || '';
+    const fVend = (document.getElementById('rrVendedor')||{}).value || '';
+    const fGest = (document.getElementById('rrGestor')||{}).value || '';
+
+    const base = PLAN_ALL.filter(x=>{
+      if(fSemana && String(x.semana)!==String(fSemana)) return false;
+      if(fDia && normDia(x.dia)!==normDia(fDia)) return false;
+      if(fVend && x.vendedor!==fVend) return false;
+      if(fGest && x.gestor!==fGest) return false;
+      return true;
+    });
+
+    const planMap = buildPlanIndex(base);
+    const doneMap = buildDoneIndex();
+    const keys = new Set([...planMap.keys(), ...doneMap.keys()]);
+    const rows = [];
+    for(const k of keys){
+      const p = planMap.get(k) || {gestor:'', semana:'', dia:'', asignados:0};
+      const d = doneMap.get(k) || {realizadas:0, last:null};
+      const asign = p.asignados||0, hechas = d.realizadas||0;
+      const pct = asign ? (hechas/asign*100) : (hechas?100:0);
+      rows.push({gestor:p.gestor||d.gestor||'', semana:p.semana||d.semana||'', dia:p.dia||d.dia||'', asignados:asign, realizadas:hechas, pct, last:d.last});
+    }
+    rows.sort((a,b)=> a.gestor.localeCompare(b.gestor,'es',{numeric:true}) ||
+                     String(a.semana).localeCompare(String(b.semana),'es',{numeric:true}) ||
+                     String(a.dia).localeCompare(String(b.dia),'es',{numeric:true}));
+
+    const tb = document.querySelector('#rrTbl tbody');
+    if(tb){
+      tb.innerHTML = rows.map(r=>'<tr>'
+        +'<td>'+ (r.gestor||'-') +'</td>'
+        +'<td>'+ (r.semana||'-') +'</td>'
+        +'<td>'+ (r.dia||'-') +'</td>'
+        +'<td>'+ r.asignados +'</td>'
+        +'<td>'+ r.realizadas +'</td>'
+        +'<td>'+ r.pct.toFixed(1) +'%' +'</td>'
+        +'<td>'+ (r.last ? new Date(r.last).toLocaleString() : '-') +'</td>'
+      +'</tr>').join('');
+    }
+
+    let asign=0, hechas=0; rows.forEach(r=>{ asign+=r.asignados; hechas+=r.realizadas; });
+    const cov = asign ? (hechas/asign*100) : (hechas?100:0);
+    const a = document.getElementById('kpiAsignadas'); if(a) a.textContent = String(asign);
+    const h = document.getElementById('kpiHechas'); if(h) h.textContent = String(hechas);
+    const c = document.getElementById('kpiCobertura'); if(c) c.textContent = cov.toFixed(1)+'%';
+  }
+
+  async function boot(){
+    if(BOOTED) return; BOOTED = true;
+    ensureSemana14();
+    try { await loadCalendario(); } catch(e){ console.warn(e); }
+    populateVG();
+    ['rrSemana','rrDia','rrVendedor','rrGestor'].forEach(id=>{
+      const el = document.getElementById(id);
+      if(el && !el.__rrBound){ el.addEventListener('change', render); el.__rrBound=true; }
+    });
+    render();
+  }
+
+  // Ensure button opens the screen and boots, stopping other listeners.
+  document.addEventListener('click', function(ev){
+    const t = ev.target;
+    if(t && t.id === BTN_ID){
+      ev.preventDefault(); ev.stopPropagation();
+      if(typeof window.__showResumenScreen==='function'){ window.__showResumenScreen(); }
+      setTimeout(boot, 0);
+    }
+  }, true);
+
+  // Also boot on DOMContentLoaded to be safe if user loads directly
+  document.addEventListener('DOMContentLoaded', function(){ setTimeout(boot,0); });
 })();
 </script>
 
