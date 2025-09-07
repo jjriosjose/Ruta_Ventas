@@ -2303,7 +2303,7 @@ document.addEventListener('click', (ev)=>{
     wrap.className = 'dlp-card';
     wrap.innerHTML = `
       <div class="dlp-row">
-        <h3 class="dlp-title">Detalle de llamadas — Clientes</h3>
+        <h3 class="dlp-title">Detalle de llamadas — Clientes <button id="rwToggleClientes" class="btn btn-soft">Ocultar clientes</button></h3>
         <div class="dlp-actions">
           <button class="dlp-btn" id="dlpExportActive">Exportar Excel</button>
           <button class="dlp-btn" id="dlpExportBoth">Exportar Excel — Todo</button>
@@ -2552,79 +2552,21 @@ document.addEventListener('click', (ev)=>{
 
 
 <script>
-// === Universal VOLVER -> home + reset (safe, unobtrusive) ===
 (function(){
-  function resetMainFilters(){
-    var ids = ['fSemana','fDia','fVendedor','fGestor','fEmpresa','fBuscar','fCliente'];
-    ids.forEach(function(id){
-      var el = document.getElementById(id);
-      if(!el) return;
-      if (el.tagName === 'SELECT') el.value = '';
-      else if (el.tagName === 'INPUT') el.value = '';
-    });
-    try{
-      if (typeof applyFilters === 'function') applyFilters();
-      if (typeof updateButtonsState === 'function') updateButtonsState();
-    }catch(e){}
+  function toggleClientes(){
+    var wrap = document.getElementById('rwClientesWrap');
+    var btn = document.getElementById('rwToggleClientes');
+    if(!wrap || !btn) return;
+    var isHidden = wrap.style.display === 'none';
+    wrap.style.display = isHidden ? '' : 'none';
+    btn.textContent = isHidden ? 'Ocultar clientes' : 'Mostrar clientes';
   }
-  function resetResumenFilters(){
-    ['rwSemana','rwVendedor','rwGestor'].forEach(function(id){
-      var el = document.getElementById(id);
-      if(!el) return;
-      if (el.tagName === 'SELECT') el.value = '';
-      else if (el.tagName === 'INPUT') el.value = '';
-    });
+  function init(){
+    var btn = document.getElementById('rwToggleClientes');
+    if(btn) btn.addEventListener('click', toggleClientes);
   }
-  function closeAllModals(){
-    ['modalReporte','modalAgenda','modalAgReporte','modalLlamada','modalConfig'].forEach(function(id){
-      var el = document.getElementById(id);
-      if (el) { el.classList.add('hidden'); el.style.display = ''; }
-    });
-    document.body.classList.remove('no-scroll');
-  }
-  function showMain(){
-    var app = document.getElementById('app');
-    var login = document.getElementById('login');
-    var resumen = document.getElementById('screenResumenSem');
-    if (resumen) resumen.style.display = 'none';
-    if (login) login.classList.add('hidden');
-    if (app) { app.classList.remove('hidden'); app.style.display = 'block'; }
-    try { window.scrollTo({top:0, behavior:'auto'}); } catch(_){}
-  }
-  function goHomeAndReset(ev){
-    if (ev) ev.preventDefault();
-    try{
-      resetResumenFilters();
-      resetMainFilters();
-      closeAllModals();
-      showMain();
-    }catch(e){}
-  }
-  window.goHomeAndReset = goHomeAndReset;
-
-  function hookVolverButtons(){
-    var nodes = Array.from(document.querySelectorAll('button, a'));
-    nodes.forEach(function(btn){
-      var txt = (btn.textContent || '').trim().toLowerCase();
-      if (txt === '← volver' || txt === 'volver') {
-        btn.onclick = goHomeAndReset;
-      }
-    });
-    ['rwVolver','rrVolver'].forEach(function(id){
-      var b = document.getElementById(id);
-      if (b) b.onclick = goHomeAndReset;
-    });
-  }
-
-  if (document.readyState === 'loading'){
-    document.addEventListener('DOMContentLoaded', hookVolverButtons);
-  } else {
-    hookVolverButtons();
-  }
-  var mo = new MutationObserver(hookVolverButtons);
-  mo.observe(document.documentElement || document.body, {childList:true, subtree:true});
+  if (document.readyState === 'loading'){ document.addEventListener('DOMContentLoaded', init); } else { init(); }
 })();
-// === End patch ===
 </script>
 
 </body>
