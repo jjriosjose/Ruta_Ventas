@@ -285,6 +285,14 @@ details > summary{
         <div><label>Vendedor</label><input id="callVendedor" type="text" readonly /></div>
         <div><label>gestor_servicio</label><input id="callGestor" type="text" readonly /></div>
         <div><label>Fecha y hora</label><input id="callFechaHora" type="datetime-local" /></div>
+        <div><label>N° Semana</label>
+          <select id="callSemana">
+            <option value="1">1</option>
+            <option value="2">2</option>
+            <option value="3">3</option>
+            <option value="4">4</option>
+          </select>
+        </div>
         <div><label>Resultado</label>
           <select id="callResultado">
 <option value="Exitosa">Exitosa</option>
@@ -693,6 +701,7 @@ function csvEscape(v){ if(v==null) return ''; const s=String(v); return (s.inclu
 
 // ======================= REGISTRAR LLAMADA =======================
 function formatDatetimeLocal(d){ const pad=n=> String(n).padStart(2,'0'); return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate())+'T'+pad(d.getHours())+':'+pad(d.getMinutes()); }
+function computeWeekFromVal(val){ try{ const d = val? new Date(val): new Date(); if(!(d instanceof Date)||isNaN(d)) return '1'; const w = Math.ceil((d.getDate())/7); return String(Math.min(Math.max(w,1),4)); }catch(_){ return '1'; } }
 function openCallModal(){
   if(!STATE.selected){ showErr('Debe seleccionar un cliente.'); return; }
   const x = STATE.selected;
@@ -701,7 +710,7 @@ function openCallModal(){
   document.getElementById('callVendedor').value = x.vendedor || '';
   document.getElementById('callGestor').value = x.gestor || '';
   document.getElementById('callFechaHora').value = formatDatetimeLocal(new Date());
-  document.getElementById('callResultado').value = 'Exitosa';
+  document.getElementById('callSemana').value = computeWeekFromVal(document.getElementById('callFechaHora').value);document.getElementById('callResultado').value = 'Exitosa';
   document.getElementById('callDuracion').value = 0;
   document.getElementById('callObs').value = '';
   document.getElementById('callTelefono1').value = x.telefono1 || '';
@@ -723,6 +732,7 @@ function saveCallRecord(){
     gestor_servicio: document.getElementById('callGestor').value.trim(),
     fecha_hora: document.getElementById('callFechaHora').value,
     resultado: document.getElementById('callResultado').value,
+    semana: document.getElementById('callSemana').value,
     duracion_seg: Number(document.getElementById('callDuracion').value||0),
     observaciones: document.getElementById('callObs').value.trim(),
     telefono1: document.getElementById('callTelefono1').value.trim(),
@@ -962,7 +972,8 @@ async function init(){
   // Modales
   document.getElementById('btnRegistrar').addEventListener('click', openCallModal);
   document.getElementById('btnCallCancelar').addEventListener('click', closeCallModal);
-  document.getElementById('btnCallGuardar').addEventListener('click', saveCallRecord);
+  document.getElementById('callFechaHora').addEventListener('change', function(){ document.getElementById('callSemana').value = computeWeekFromVal(this.value); });
+document.getElementById('btnCallGuardar').addEventListener('click', saveCallRecord);
 
   document.getElementById('btnReporte').addEventListener('click', openReporte);
   document.getElementById('btnRepCerrar').addEventListener('click', closeReporte);
@@ -2539,86 +2550,5 @@ document.addEventListener('click', (ev)=>{
 })();
 </script>
 
-
-<!-- --- BEGIN SAFE UI PATCH: targeted hides without removing logic --- -->
-<script>
-(function() {
-  function textMatch(el, text) {
-    if (!el) return false;
-    return (el.textContent || '').trim().toLowerCase() === text.trim().toLowerCase();
-  }
-  function containsText(el, text) {
-    if (!el) return false;
-    return (el.textContent || '').toLowerCase().includes(text.trim().toLowerCase());
-  }
-  function hide(el) { if (el && el.style) el.style.display = 'none'; }
-  function show(el) { if (el && el.style) el.style.display = ''; }
-
-  function hideLoginExtras() {
-    var login = document.querySelector('#login');
-    if (!login) return;
-
-    var inLoginVisible = !!login && login.offsetParent !== null; // visible on screen
-
-    // Floating "Resumen (Sem)" button (left side)
-    // We detect by text to be robust across ids/classes.
-    var allBtns = Array.from(document.querySelectorAll('button, a'));
-    var floatingResumen = allBtns.find(b => containsText(b, 'Resumen (Sem)'));
-    if (inLoginVisible) {
-      // Hide Reporte (Resumen) buttons INSIDE login
-      var insideLoginBtns = Array.from(login.querySelectorAll('button, a'));
-      insideLoginBtns.forEach(function(b){
-        if (containsText(b, 'Reporte (Resumen)')) hide(b);
-      });
-      // Hide floating resumen button (if exists)
-      hide(floatingResumen);
-    } else {
-      // When we are not on login, restore visibility
-      var insideLoginBtns = Array.from(login.querySelectorAll('button, a'));
-      insideLoginBtns.forEach(function(b){
-        if (containsText(b, 'Reporte (Resumen)')) show(b);
-      });
-      if (floatingResumen) show(floatingResumen);
-    }
-  }
-
-  function hideDuplicateResumenBlock() {
-    // Find headings that look like the duplicated block label.
-    var headings = Array.from(document.querySelectorAll('h1, h2, h3, h4'));
-    var matches = headings.filter(h => containsText(h, 'Reporte de Llamadas') && containsText(h, 'Resumen'));
-    if (matches.length > 1) {
-      // Hide all except the first (keep the main/top one)
-      for (var i = 1; i < matches.length; i++) {
-        var node = matches[i];
-        // Hide the closest "card"/"section"/"div" container for that block to avoid leaving empty stripes
-        var container = node.closest('.card, section, .container, .box, .panel, .block, .content, div');
-        hide(container || node);
-      }
-    }
-  }
-
-  function applyAll() {
-    hideLoginExtras();
-    hideDuplicateResumenBlock();
-  }
-
-  // Run on load
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', applyAll);
-  } else {
-    applyAll();
-  }
-
-  // Observe DOM mutations to re-apply when navigating between screens
-  var mo = new MutationObserver(function() {
-    applyAll();
-  });
-  mo.observe(document.documentElement || document.body, { childList: true, subtree: true, attributes: true });
-
-  // Also re-apply on hash changes or custom navigation
-  window.addEventListener('hashchange', applyAll);
-})();
-</script>
-<!-- --- END SAFE UI PATCH --- -->
 </body>
 </html>
