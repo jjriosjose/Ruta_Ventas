@@ -41,11 +41,6 @@
     .khead{ font-weight:700; margin-bottom:2px; }
     .kmeta{ color:#9fb1cc; font-size:12px; }
   </style>
-  <style>
-    /* Ocultar botones de Reporte (Resumen) SOLO en la pantalla de Login */
-    #login #btnReporteResumen { display: none !important; }
-  </style>
-
 <style id="theme-override-light">
 /* === Light, professional theme override (no logic changes) === */
 :root{
@@ -2545,22 +2540,85 @@ document.addEventListener('click', (ev)=>{
 </script>
 
 
+<!-- --- BEGIN SAFE UI PATCH: targeted hides without removing logic --- -->
 <script>
-// Ocultar botón "Resumen (Sem)" en Login y mostrarlo cuando #app esté activo
-document.addEventListener('DOMContentLoaded', function(){
-  var btnSem = document.getElementById('btnOpenResumenSem');
-  if (btnSem) { btnSem.style.display = 'none'; }
-  var app = document.getElementById('app');
-  if (app && btnSem){
-    var toggle = function(){
-      var hidden = app.classList.contains('hidden');
-      btnSem.style.display = hidden ? 'none' : '';
-    };
-    toggle();
-    var mo = new MutationObserver(toggle);
-    mo.observe(app, {attributes:true, attributeFilter:['class']});
+(function() {
+  function textMatch(el, text) {
+    if (!el) return false;
+    return (el.textContent || '').trim().toLowerCase() === text.trim().toLowerCase();
   }
-});
+  function containsText(el, text) {
+    if (!el) return false;
+    return (el.textContent || '').toLowerCase().includes(text.trim().toLowerCase());
+  }
+  function hide(el) { if (el && el.style) el.style.display = 'none'; }
+  function show(el) { if (el && el.style) el.style.display = ''; }
+
+  function hideLoginExtras() {
+    var login = document.querySelector('#login');
+    if (!login) return;
+
+    var inLoginVisible = !!login && login.offsetParent !== null; // visible on screen
+
+    // Floating "Resumen (Sem)" button (left side)
+    // We detect by text to be robust across ids/classes.
+    var allBtns = Array.from(document.querySelectorAll('button, a'));
+    var floatingResumen = allBtns.find(b => containsText(b, 'Resumen (Sem)'));
+    if (inLoginVisible) {
+      // Hide Reporte (Resumen) buttons INSIDE login
+      var insideLoginBtns = Array.from(login.querySelectorAll('button, a'));
+      insideLoginBtns.forEach(function(b){
+        if (containsText(b, 'Reporte (Resumen)')) hide(b);
+      });
+      // Hide floating resumen button (if exists)
+      hide(floatingResumen);
+    } else {
+      // When we are not on login, restore visibility
+      var insideLoginBtns = Array.from(login.querySelectorAll('button, a'));
+      insideLoginBtns.forEach(function(b){
+        if (containsText(b, 'Reporte (Resumen)')) show(b);
+      });
+      if (floatingResumen) show(floatingResumen);
+    }
+  }
+
+  function hideDuplicateResumenBlock() {
+    // Find headings that look like the duplicated block label.
+    var headings = Array.from(document.querySelectorAll('h1, h2, h3, h4'));
+    var matches = headings.filter(h => containsText(h, 'Reporte de Llamadas') && containsText(h, 'Resumen'));
+    if (matches.length > 1) {
+      // Hide all except the first (keep the main/top one)
+      for (var i = 1; i < matches.length; i++) {
+        var node = matches[i];
+        // Hide the closest "card"/"section"/"div" container for that block to avoid leaving empty stripes
+        var container = node.closest('.card, section, .container, .box, .panel, .block, .content, div');
+        hide(container || node);
+      }
+    }
+  }
+
+  function applyAll() {
+    hideLoginExtras();
+    hideDuplicateResumenBlock();
+  }
+
+  // Run on load
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', applyAll);
+  } else {
+    applyAll();
+  }
+
+  // Observe DOM mutations to re-apply when navigating between screens
+  var mo = new MutationObserver(function() {
+    applyAll();
+  });
+  mo.observe(document.documentElement || document.body, { childList: true, subtree: true, attributes: true });
+
+  // Also re-apply on hash changes or custom navigation
+  window.addEventListener('hashchange', applyAll);
+})();
 </script>
+<!-- --- END SAFE UI PATCH --- -->
 </body>
 </html>
