@@ -1799,5 +1799,172 @@ document.addEventListener('click', (ev)=>{
 })();
 </script>
 
+
+<script>
+(function(){
+  function pick(obj, keys){
+    for(const k of keys){
+      if(k in obj && obj[k]!=null && obj[k]!=='' ) return obj[k];
+      const found = Object.keys(obj).find(x=>x.toLowerCase()===k.toLowerCase());
+      if(found) return obj[found];
+    }
+    return undefined;
+  }
+  function normStr(s){ return String(s||'').trim(); }
+  function normDia(d){
+    return String(d||'').normalize('NFD').replace(/\p{Diacritic}/gu,'').toLowerCase();
+  }
+  const K = {
+    semana: ['Semana','N Semana','N_Semana','n_semana','n semana','semana'],
+    dia: ['Día','Dia','día','dia'],
+    vendedor: ['Vendedor','VENDEDOR','vendedor'],
+    gestor: ['Gestor','gestor','Gestor cartera','gestor_cartera','gestor_servicio'],
+    cod: ['Cod','Código','Codigo','codigo','cod','codigo_npg','id','ID','Id','Cod Cliente','cod cliente']
+  };
+  function getBase(){
+    const base = (window.STATE && Array.isArray(STATE.joined)) ? STATE.joined : [];
+    return base.map(x=>({
+      gestor: normStr(pick(x, K.gestor) || 'NO ASIGNADO'),
+      vendedor: normStr(pick(x, K.vendedor) || ''),
+      semana: normStr(pick(x, K.semana) || ''),
+      dia: normStr(pick(x, K.dia) || ''),
+      cod: normStr(pick(x, K.cod) || '')
+    }));
+  }
+  function indexByCod(base){
+    const map = new Map();
+    for(const r of base){
+      if(r.cod) map.set(r.cod, r);
+    }
+    return map;
+  }
+  window.populateRRFilters = function populateRRFilters(){
+    const base = getBase();
+    const selSemana = document.getElementById('rrSemana');
+    const selVend = document.getElementById('rrVendedor');
+    const selGest = document.getElementById('rrGestor');
+    function addOpts(sel, values){
+      if(!sel) return;
+      const have = new Set([...sel.options].map(o=>o.value));
+      for(const v of values){
+        if(!have.has(v) && v!=='') {
+          const o = document.createElement('option');
+          o.value = v; o.textContent = v;
+          sel.appendChild(o);
+        }
+      }
+    }
+    const semanas = [...new Set(base.map(x=>x.semana).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'es',{numeric:true}));
+    const vend = [...new Set(base.map(x=>x.vendedor).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'es',{numeric:true}));
+    const gest = [...new Set(base.map(x=>x.gestor).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'es',{numeric:true}));
+    addOpts(selSemana, semanas);
+    addOpts(selVend, vend);
+    addOpts(selGest, gest);
+  };
+
+  const _oldRenderRR = window.renderRR;
+  window.renderRR = function(){
+    const fSemana = (document.getElementById('rrSemana')||{}).value || '';
+    const fDia = (document.getElementById('rrDia')||{}).value || '';
+    const fVend = (document.getElementById('rrVendedor')||{}).value || '';
+    const fGest = (document.getElementById('rrGestor')||{}).value || '';
+
+    const baseAll = getBase();
+    const base = baseAll.filter(x=>{
+      if(fSemana && x.semana !== fSemana) return false;
+      if(fDia && normDia(x.dia) !== normDia(fDia)) return false;
+      if(fVend && x.vendedor !== fVend) return false;
+      if(fGest && x.gestor !== fGest) return false;
+      return true;
+    });
+
+    const planMap = new Map();
+    function keyOf(r){ return r.gestor+'||'+r.semana+'||'+normDia(r.dia); }
+    for(const r of base){
+      const k = keyOf(r);
+      const it = planMap.get(k) || {gestor:r.gestor, semana:r.semana, dia:r.dia, asignados:0};
+      it.asignados += 1;
+      planMap.set(k, it);
+    }
+
+    let calls = [];
+    try{ calls = JSON.parse(localStorage.getItem('llamadas_records') || '[]'); }catch(_){ calls=[]; }
+    if(window.STATE && Array.isArray(STATE.calls)) calls = calls.concat(STATE.calls);
+
+    const codIndex = indexByCod(baseAll);
+    const doneMap = new Map();
+    for(const c of calls){
+      const cod = normStr(c.cod || c.codigo || c.cod_cliente || c.id || c.Cod || '');
+      const plan = codIndex.get(cod);
+      if(!plan) continue;
+      if(fSemana && plan.semana !== fSemana) continue;
+      if(fDia && normDia(plan.dia) !== normDia(fDia)) continue;
+      if(fVend && plan.vendedor !== fVend) continue;
+      if(fGest && plan.gestor !== fGest) continue;
+      const k = plan.gestor+'||'+plan.semana+'||'+normDia(plan.dia);
+      const it = doneMap.get(k) || {gestor:plan.gestor, semana:plan.semana, dia:plan.dia, realizadas:0, last:null};
+      it.realizadas += 1;
+      const d = new Date(c.fecha_hora||c.fecha||c.timestamp||'');
+      if(!isNaN(d)) it.last = (!it.last || new Date(it.last) < d) ? d.toISOString() : it.last;
+      doneMap.set(k, it);
+    }
+
+    const keys = new Set([...planMap.keys(), ...doneMap.keys()]);
+    const rows = [];
+    for(const k of keys){
+      const p = planMap.get(k) || {gestor:'', semana:'', dia:'', asignados:0};
+      const d = doneMap.get(k) || {realizadas:0, last:null};
+      const asign = p.asignados||0, hechas = d.realizadas||0;
+      const pct = asign ? (hechas/asign*100) : (hechas?100:0);
+      rows.push({
+        gestor: p.gestor || d.gestor || '',
+        semana: p.semana || d.semana || '',
+        dia: p.dia || d.dia || '',
+        asignados: asign,
+        realizadas: hechas,
+        pct: pct,
+        last: d.last
+      });
+    }
+    rows.sort((a,b)=> a.gestor.localeCompare(b.gestor,'es',{numeric:true}) ||
+                     String(a.semana).localeCompare(String(b.semana),'es',{numeric:true}) ||
+                     String(a.dia).localeCompare(String(b.dia),'es',{numeric:true}));
+
+    const tb = document.querySelector('#rrTbl tbody');
+    if(tb){
+      tb.innerHTML = rows.map(r=>'<tr>'
+        +'<td>'+ (r.gestor||'-') +'</td>'
+        +'<td>'+ (r.semana||'-') +'</td>'
+        +'<td>'+ (r.dia||'-') +'</td>'
+        +'<td>'+ r.asignados +'</td>'
+        +'<td>'+ r.realizadas +'</td>'
+        +'<td>'+ r.pct.toFixed(1) +'%' +'</td>'
+        +'<td>'+ (r.last ? new Date(r.last).toLocaleString() : '-') +'</td>'
+      +'</tr>').join('');
+    }
+
+    try{
+      let asign = 0, hechas = 0;
+      rows.forEach(r=>{ asign+=r.asignados; hechas+=r.realizadas; });
+      const cov = asign ? (hechas/asign*100) : (hechas?100:0);
+      const a = document.getElementById('kpiAsignadas'); if(a) a.textContent = String(asign);
+      const h = document.getElementById('kpiHechas'); if(h) h.textContent = String(hechas);
+      const c = document.getElementById('kpiCobertura'); if(c) c.textContent = cov.toFixed(1)+'%';
+    }catch(_){}
+  };
+
+  const _oldShow = window.__showResumenScreen;
+  window.__showResumenScreen = function(){
+    if(typeof _oldShow==='function'){ _oldShow(); }
+    try { populateRRFilters(); } catch(_) {}
+    try { renderRR(); } catch(_) {}
+  };
+  ['rrSemana','rrDia','rrVendedor','rrGestor'].forEach(id=>{
+    const el = document.getElementById(id);
+    if(el) el.addEventListener('change', function(){ try{ renderRR(); }catch(_){}});
+  });
+})();
+</script>
+
 </body>
 </html>
