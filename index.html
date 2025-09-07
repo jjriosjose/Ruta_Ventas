@@ -285,6 +285,7 @@ details > summary{
         <div><label>Vendedor</label><input id="callVendedor" type="text" readonly /></div>
         <div><label>gestor_servicio</label><input id="callGestor" type="text" readonly /></div>
         <div><label>Fecha y hora</label><input id="callFechaHora" type="datetime-local" /></div>
+<div><label>Semana</label><select id="callSemana"><option value="">(auto)</option><option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="4">4</option></select></div>
         <div><label>Resultado</label>
           <select id="callResultado">
 <option value="Exitosa">Exitosa</option>
@@ -2209,6 +2210,87 @@ document.addEventListener('click', (ev)=>{
   });
   document.addEventListener('change', (ev)=>{
     if(ev.target && ['rwSemana','rwVendedor','rwGestor'].includes(ev.target.id)){ render(); }
+  });
+})();
+</script>
+
+
+<script>
+(function(){
+  const $all = (s,root=document)=>Array.from(root.querySelectorAll(s));
+  const textOf = (el)=> (el && (el.innerText||el.textContent||'')).trim();
+
+  // A) Helper: find the floating KPI button by text "Resumen (Sem)"
+  function findFloatingResumenBtn(){
+    const candidates = $all('button, a, [role="button"]');
+    return candidates.find(el => /\bresumen\s*\(sem\)/i.test(textOf(el)));
+  }
+
+  // B) Hide the floating button on login only (when #container is not visible)
+  document.addEventListener('DOMContentLoaded', ()=>{
+    const cont = document.querySelector('#container');
+    const btn = findFloatingResumenBtn();
+    if(btn && (!cont || cont.offsetParent === null)){ // login or container oculto
+      btn.style.display = 'none';
+    }
+  });
+
+  // C) Hook: when the user clicks "Reporte (Resumen)" call the same action as the floating KPI button
+  document.addEventListener('click', (ev)=>{
+    const t = ev.target;
+    if(!t) return;
+    const label = textOf(t).toLowerCase();
+    if(label === 'reporte (resumen)'){
+      const btn = findFloatingResumenBtn();
+      if(btn){
+        ev.preventDefault();
+        ev.stopPropagation();
+        // ensure button is visible (we're inside the app) and trigger it
+        btn.style.display = '';
+        btn.click();
+      }
+    }
+  });
+
+  // D) Remove/hide the inferior static screen "Reporte de Llamadas — Resumen" (no semanal)
+  function hideOldResumen(root=document){
+    $all('h1,h2,h3,h4', root).forEach(h=>{
+      const txt = (h.textContent||'').toLowerCase();
+      if(txt.includes('reporte de llamadas') && txt.includes('resumen') && !txt.includes('semanal')){
+        const box = h.closest('section,.card,.container,.panel,.box,div');
+        if(box) box.style.display = 'none';
+      }
+    });
+  }
+  document.addEventListener('DOMContentLoaded', ()=>{
+    hideOldResumen();
+    const mo = new MutationObserver(muts=>muts.forEach(m=> hideOldResumen(m.target||document)));
+    mo.observe(document.body, {childList:true, subtree:true});
+  });
+})();
+</script>
+
+
+<script>
+(function(){
+  function weekOfMonth(dateStr){
+    if(!dateStr) return '';
+    const d = new Date(dateStr);
+    if(isNaN(d)) return '';
+    const w = 1 + Math.floor((d.getDate()-1)/7);
+    return String(Math.min(4, Math.max(1, w)));
+  }
+  function syncSemana(){
+    const fh = document.getElementById('callFechaHora');
+    const sm = document.getElementById('callSemana');
+    if(!fh || !sm) return;
+    const w = weekOfMonth(fh.value);
+    if(w) sm.value = w;
+  }
+  document.addEventListener('change', e=>{ if(e.target && e.target.id==='callFechaHora') syncSemana(); });
+  document.addEventListener('click', e=>{
+    if(e.target && (e.target.id==='btnRegistrar' || (e.target.dataset && e.target.dataset.open==='modalLlamada'))) setTimeout(syncSemana, 50);
+    if(e.target && (e.target.id==='btnCallGuardar' || /guardar/i.test((e.target.textContent||''))) && e.target.closest('#modalLlamada')) syncSemana();
   });
 })();
 </script>
