@@ -170,7 +170,8 @@ details > summary{
         <span class="chip">Usuarios: <span id="usersCount">0</span></span>
         <button id="btnOpenConfig" class="btn btn-soft">⚙️ Configurar</button>
       
-</div>
+<button id="btnReporteResumen" class="btn btn-soft">Reporte (Resumen)</button>
+<button id="btnReporteResumen" class="btn btn-soft">Reporte (Resumen)</button></div>
     </section>
 
     <!-- APP -->
@@ -443,7 +444,7 @@ details > summary{
   </div>
 
   
-  <button id="btnOpenResumenSem" class="btn" style="margin-left:8px; display:none;">📊 Resumen (Sem)</button>
+  <button id="btnOpenResumenSem" class="btn" style="margin-left:8px;">📊 Resumen (Sem)</button>
 
   
   <!-- === Pantalla: Reporte de Llamadas — Resumen (Semanal) === -->
@@ -834,7 +835,7 @@ function exportAgendaCSV(){
 }
 
 // ======================= LOGIN =======================
-function doLogin(){ const u=val('loginUser').trim(), p=val('loginPass'); if(!u||!p){ showErr('Ingrese usuario y contraseña.'); return; try{var b=document.getElementById('btnOpenResumenSem'); if(b) b.style.display='';}catch(e){};} const ok=STATE.users.find(x=> norm(x.Usuario)===norm(u) && String(x.Password)===String(p) ); if(!ok){ showErr('Usuario o contraseña incorrectos.'); return; } STATE.currentUser = ok; document.getElementById('login').classList.add('hidden'); document.getElementById('app').classList.remove('hidden'); setTimeout(()=>STATE.map&&STATE.map.invalidateSize(), 50); applyFilters(); }
+function doLogin(){ const u=val('loginUser').trim(), p=val('loginPass'); if(!u||!p){ showErr('Ingrese usuario y contraseña.'); return; } const ok=STATE.users.find(x=> norm(x.Usuario)===norm(u) && String(x.Password)===String(p) ); if(!ok){ showErr('Usuario o contraseña incorrectos.'); return; } STATE.currentUser = ok; document.getElementById('login').classList.add('hidden'); document.getElementById('app').classList.remove('hidden'); setTimeout(()=>STATE.map&&STATE.map.invalidateSize(), 50); applyFilters(); }
 
 // ======================= CONFIG MODAL =======================
 function openConfig(){ document.getElementById('cfgMode').value = CONFIG.mode; document.getElementById('cfgUsuarios').value = CONFIG.sheets.usuarios || ''; document.getElementById('cfgClientes').value = CONFIG.sheets.clientes || ''; document.getElementById('cfgCalendario').value = CONFIG.sheets.calendario || ''; document.getElementById('cfgExcluirVendedores').value = (CONFIG.excluirVendedores||[]).join('\\n'); document.getElementById('cfgStatus').textContent = ''; const m=document.getElementById('modalConfig'); m.classList.remove('hidden'); m.style.display='flex'; }
@@ -1533,11 +1534,10 @@ document.addEventListener('click', (ev)=>{
 <script>
 document.addEventListener('click', (ev)=>{
   if(ev.target && ev.target.id === 'btnReporteResumen'){
-    ev.preventDefault(); ev.stopPropagation();
-    (async ()=>{
-      try{ await loadPlan(); populateFilters(); render(); }catch(_){}
-      if(typeof showResumen==='function') showResumen();
-    })();
+    if(typeof window.openReporte === 'function'){ 
+      window.openReporte();
+      if(typeof window.__repShowResumen === 'function') window.__repShowResumen();
+    }
   }
 });
 </script>
@@ -2210,6 +2210,332 @@ document.addEventListener('click', (ev)=>{
   document.addEventListener('change', (ev)=>{
     if(ev.target && ['rwSemana','rwVendedor','rwGestor'].includes(ev.target.id)){ render(); }
   });
+})();
+</script>
+
+
+<!-- ==== Drill-down Detail + Excel Export (self-contained) ==== -->
+<style>
+  .dlp-card{background:#fff;border-radius:14px;box-shadow:0 6px 24px rgba(13,38,76,.12);padding:16px;margin:24px 0}
+  .dlp-row{display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+  .dlp-title{font-size:18px;font-weight:700;margin:0 0 10px}
+  .dlp-chips{display:flex;gap:10px;margin:6px 0 14px;flex-wrap:wrap}
+  .dlp-chip{background:#f1f5f9;border-radius:999px;padding:6px 10px;font-size:12px}
+  .dlp-tabs{display:flex;gap:6px;margin:8px 0 12px}
+  .dlp-tab{padding:8px 12px;border-radius:10px;border:1px solid #e2e8f0;background:#fff;cursor:pointer}
+  .dlp-tab.active{background:#0ea5e9;color:#fff;border-color:#0ea5e9}
+  .dlp-actions{margin-left:auto;display:flex;gap:8px}
+  .dlp-btn{padding:8px 12px;border:1px solid #e2e8f0;border-radius:10px;background:#fff;cursor:pointer}
+  .dlp-table{width:100%;border-collapse:collapse;margin-top:8px}
+  .dlp-table th,.dlp-table td{border-bottom:1px solid #e5e7eb;padding:8px 10px;font-size:13px;text-align:left}
+  .dlp-muted{opacity:.7}
+  @media (prefers-color-scheme: dark){
+    .dlp-card{background:#111827;color:#e5e7eb;border:1px solid #1f2937}
+    .dlp-chip{background:#1f2937}
+    .dlp-tab{background:#111827;border-color:#1f2937;color:#e5e7eb}
+    .dlp-btn{background:#111827;border-color:#1f2937;color:#e5e7eb}
+    .dlp-table th,.dlp-table td{border-color:#1f2937}
+  }
+</style>
+<script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<script>
+(function(){
+  const AGENDA_CSV = "https://docs.google.com/spreadsheets/d/e/2PACX-1vSGjr-XdLSamHpGQfoORmLfntJbLd-UbFpD7NdMM14x2JdMhxOYHTWQBlhYCMDu0ZTy3AYS-1Y3q91Y/pub?gid=223681507&single=true&output=csv";
+
+  const $$ = (sel,root=document)=>Array.from(root.querySelectorAll(sel));
+  const T = (el)=> (el && (el.textContent||'').trim()) || "";
+  const norm = s => (s||"").toString().trim().toLowerCase();
+
+  let agendaRows = null; // parsed CSV
+  let state = { semana: "Todas", vendedor:"Todos", gestor:"Todos", selected:{gestor:null, semana:null} };
+  let elements = { panel:null, tabs:null, table:null, chips:null };
+
+  function findKPI(){
+    // locate the KPI upper card by heading Resumen (Semanal)
+    for(const h of $$('h1,h2,h3,h4')){
+      const t = T(h).toLowerCase();
+      if(t.includes('resumen') && t.includes('semanal')){
+        const card = h.closest('section,.card,div');
+        if(card){
+          // find 3 selects near
+          const selects = $$('select', card);
+          let map = {};
+          selects.forEach(sel=>{
+            const l = sel.closest('label,div')?.querySelector('label');
+            const guess = l ? T(l).toLowerCase() : "";
+            if(guess.includes('semana')) map.semana = sel;
+            else if(guess.includes('vendedor')) map.vendedor = sel;
+            else if(guess.includes('gestor')) map.gestor = sel;
+          });
+          // fallback: first 3 selects
+          if(!map.semana && selects[0]) map.semana = selects[0];
+          if(!map.vendedor && selects[1]) map.vendedor = selects[1];
+          if(!map.gestor && selects[2]) map.gestor = selects[2];
+          return {card, filters:map, table: card.querySelector('table')};
+        }
+      }
+    }
+    return null;
+  }
+
+  function readFilters(kpi){
+    const get = sel => sel ? sel.value : "Todos";
+    state.semana = get(kpi.filters.semana) || "Todas";
+    state.vendedor = get(kpi.filters.vendedor) || "Todos";
+    state.gestor   = get(kpi.filters.gestor)   || "Todos";
+  }
+
+  function injectPanel(afterNode){
+    if(elements.panel) return;
+    const wrap = document.createElement('section');
+    wrap.className = 'dlp-card';
+    wrap.innerHTML = `
+      <div class="dlp-row">
+        <h3 class="dlp-title">Detalle de llamadas — Clientes</h3>
+        <div class="dlp-actions">
+          <button class="dlp-btn" id="dlpExportActive">Exportar Excel</button>
+          <button class="dlp-btn" id="dlpExportBoth">Exportar Excel — Todo</button>
+        </div>
+      </div>
+      <div class="dlp-chips" id="dlpChips"></div>
+      <div class="dlp-tabs">
+        <button class="dlp-tab active" data-tab="pend">Pendientes (Agenda)</button>
+        <button class="dlp-tab" data-tab="real">Realizadas (Historial)</button>
+      </div>
+      <div id="dlpTableWrap">
+        <table class="dlp-table" id="dlpTable"><thead></thead><tbody></tbody></table>
+        <div class="dlp-muted" id="dlpEmpty" style="display:none; padding:10px 0">Sin datos para los filtros seleccionados.</div>
+      </div>
+    `;
+    afterNode.parentNode.insertBefore(wrap, afterNode.nextSibling);
+    elements.panel = wrap;
+    elements.table = wrap.querySelector('#dlpTable');
+    elements.chips = wrap.querySelector('#dlpChips');
+    elements.tabs = wrap.querySelectorAll('.dlp-tab');
+    elements.btnActive = wrap.querySelector('#dlpExportActive');
+    elements.btnBoth = wrap.querySelector('#dlpExportBoth');
+
+    elements.tabs.forEach(btn=>btn.addEventListener('click', ()=>{
+      elements.tabs.forEach(b=>b.classList.remove('active'));
+      btn.classList.add('active');
+      render();
+    }));
+    elements.btnActive.addEventListener('click', ()=> exportExcel({both:false}));
+    elements.btnBoth.addEventListener('click', ()=> exportExcel({both:true}));
+  }
+
+  async function ensureAgenda(){
+    if(agendaRows) return;
+    try{
+      const res = await fetch(AGENDA_CSV, {cache:'no-store'});
+      const csv = await res.text();
+      const parsed = Papa.parse(csv, {header:true, skipEmptyLines:true});
+      agendaRows = parsed.data;
+    }catch(e){
+      console.error('Error cargando Agenda CSV', e);
+      agendaRows = [];
+    }
+  }
+
+  function filtersSummary(extra={}){
+    const chips = [];
+    const s = state.semana; const v= state.vendedor; const g= state.gestor;
+    chips.push(`Semana: <b>${s}</b>`);
+    chips.push(`Vendedor: <b>${v}</b>`);
+    chips.push(`Gestor: <b>${g}</b>`);
+    if(extra.gestor && extra.semana){
+      chips.push(`Foco KPI → Gestor: <b>${extra.gestor}</b>, Semana: <b>${extra.semana}</b>`);
+    }
+    elements.chips.innerHTML = chips.map(c=>`<span class="dlp-chip">${c}</span>`).join('');
+  }
+
+  function getActiveTab(){ return elements.panel.querySelector('.dlp-tab.active')?.dataset.tab || 'pend'; }
+
+  function weekMatches(val){
+    if(!state.semana || state.semana==='Todas') return true;
+    const vv = (val||'').toString().trim();
+    return vv === state.semana || vv.padStart(1,'') === state.semana;
+  }
+  function eqOrAll(filterVal, value){
+    if(!filterVal || /todos|todas/i.test(filterVal)) return true;
+    return norm(filterVal) === norm(value);
+  }
+
+  function buildPendientes(){
+    const rows = (agendaRows||[]).filter(r=>
+      weekMatches(r['SEMANA']||r['Semana']||r['semana']) &&
+      eqOrAll(state.vendedor, r['vendedor']) &&
+      eqOrAll(state.gestor, r['gestor_servicio']||r['gestor'])
+    );
+    const map = new Map();
+    rows.forEach(r=>{
+      const cod = r['Cod Empresa'] || r['cod'] || r['Cod'] || '';
+      const cli = r['RazonSocial'] || r['cliente'] || '';
+      const key = cod+'|'+cli;
+      if(!map.has(key)){
+        map.set(key, { 'Cod Empresa':cod, 'Cliente':cli, 'Semana': r['SEMANA']||r['Semana']||r['semana'],
+                       'Día': r['DIA']||r['Dia']||r['día']||'', 'Vendedor': r['vendedor']||'',
+                       'Gestor': r['gestor_servicio']||r['gestor']||'', 'A realizar':0 });
+      }
+      map.get(key)['A realizar'] += 1;
+    });
+    return Array.from(map.values());
+  }
+
+  function findCallsTable(){
+    for(const t of $$('table')){
+      const hs = $$('thead th', t).map(th=>T(th).toLowerCase());
+      if(hs.includes('cliente') && (hs.includes('vendedor')||hs.includes('gestor')) && hs.some(h=>h.includes('fecha'))){
+        return t;
+      }
+    }
+    return null;
+  }
+
+  function buildRealizadas(){
+    const tbl = findCallsTable();
+    if(!tbl) return [];
+    const hs = $$('thead th', tbl).map(th=>T(th));
+    const body = $$('tbody tr', tbl);
+    const idx = (name)=>{
+      const i = hs.findIndex(h=> (h||'').toLowerCase().includes(name) );
+      return i>=0 ? i : -1;
+    };
+    const icli=idx('cliente'), iven=idx('vendedor'), iges=idx('gestor');
+    const ifecha = hs.findIndex(h=>/fecha|hora/i.test(h));
+    const map = new Map();
+    body.forEach(tr=>{
+      const tds = $$('td', tr).map(td=>T(td));
+      const cliente = icli>=0? tds[icli] : '';
+      const vendedor = iven>=0? tds[iven] : '';
+      const gestor = iges>=0? tds[iges] : '';
+      const fecha = ifecha>=0? tds[ifecha] : '';
+      if(!eqOrAll(state.vendedor, vendedor)) return;
+      if(!eqOrAll(state.gestor, gestor)) return;
+      const k = cliente+'|'+vendedor+'|'+gestor;
+      if(!map.has(k)) map.set(k, { 'Cliente': cliente, 'Vendedor': vendedor, 'Gestor': gestor, 'Realizadas': 0, 'Última llamada': ''});
+      const o = map.get(k);
+      o['Realizadas'] += 1;
+      if(fecha){
+        if(!o['Última llamada'] || fecha > o['Última llamada']) o['Última llamada'] = fecha;
+      }
+    });
+    return Array.from(map.values());
+  }
+
+  function setTable(headers, rows){
+    const thead = elements.table.querySelector('thead');
+    const tbody = elements.table.querySelector('tbody');
+    thead.innerHTML = '<tr>'+headers.map(h=>`<th>${h}</th>`).join('')+'</tr>';
+    if(!rows.length){
+      tbody.innerHTML = '';
+      elements.panel.querySelector('#dlpEmpty').style.display = 'block';
+    }else{
+      elements.panel.querySelector('#dlpEmpty').style.display = 'none';
+      tbody.innerHTML = rows.map(r=>'<tr>'+headers.map(h=>`<td>${r[h] ?? ''}</td>`).join('')+'</tr>').join('');
+    }
+  }
+
+  function render(){
+    const tab = getActiveTab();
+    filtersSummary(state.selected);
+    if(tab==='pend'){
+      ensureAgenda().then(()=>{
+        const data = buildPendientes();
+        const headers = ['Cod Empresa','Cliente','Semana','Día','Vendedor','Gestor','A realizar'];
+        setTable(headers, data);
+        elements.btnActive.dataset.sheet = 'Pendientes';
+        elements.btnActive.dataset.payload = JSON.stringify(data);
+      });
+    }else{
+      const data = buildRealizadas();
+      const headers = ['Cliente','Vendedor','Gestor','Realizadas','Última llamada'];
+      setTable(headers, data);
+      elements.btnActive.dataset.sheet = 'Realizadas';
+      elements.btnActive.dataset.payload = JSON.stringify(data);
+    }
+  }
+
+  function exportExcel({both=false}={}){
+    const wb = XLSX.utils.book_new();
+    const addSheet = (name, arr)=>{
+      const ws = XLSX.utils.json_to_sheet(arr);
+      XLSX.utils.book_append_sheet(wb, ws, name);
+    };
+    if(both){
+      const pendBtn = elements.panel.querySelector('.dlp-tab[data-tab="pend"]');
+      const realBtn = elements.panel.querySelector('.dlp-tab[data-tab="real"]');
+      const current = getActiveTab();
+      pendBtn.classList.add('active'); realBtn.classList.remove('active'); render();
+      const pendData = JSON.parse(elements.btnActive.dataset.payload||'[]');
+      pendBtn.classList.remove('active'); realBtn.classList.add('active'); render();
+      const realData = JSON.parse(elements.btnActive.dataset.payload||'[]');
+      if(current==='pend'){ pendBtn.classList.add('active'); realBtn.classList.remove('active'); } else { pendBtn.classList.remove('active'); realBtn.classList.add('active'); }
+      render();
+      addSheet('Pendientes', pendData);
+      addSheet('Realizadas', realData);
+    }else{
+      const sheet = elements.btnActive.dataset.sheet || 'Datos';
+      const data = JSON.parse(elements.btnActive.dataset.payload||'[]');
+      addSheet(sheet, data);
+    }
+    const parts = [];
+    if(state.semana && !/todas/i.test(state.semana)) parts.push('Sem'+state.semana);
+    if(state.vendedor && !/todos/i.test(state.vendedor)) parts.push('Ven_'+state.vendedor);
+    if(state.gestor && !/todos/i.test(state.gestor)) parts.push('Ges_'+state.gestor);
+    const fname = 'Llamadas_'+(parts.join('_')||'Resumen')+'.xlsx';
+    XLSX.writeFile(wb, fname);
+  }
+
+  function attachRowClick(kpi){
+    const tbody = kpi.table ? kpi.table.querySelector('tbody') : null;
+    if(!tbody) return;
+    tbody.addEventListener('click', (ev)=>{
+      const tr = ev.target.closest('tr'); if(!tr) return;
+      const tds = Array.from(tr.querySelectorAll('td')).map(td=> (td.textContent||'').trim() );
+      const heads = Array.from(kpi.table.querySelectorAll('thead th')).map(th=> (th.textContent||'').trim().toLowerCase());
+      const idxGestor = heads.findIndex(h=>h.includes('gestor'));
+      const idxSem = heads.findIndex(h=>h.includes('semana'));
+      const gestor = idxGestor>=0 ? tds[idxGestor] : null;
+      const semana = idxSem>=0 ? tds[idxSem] : null;
+      if(gestor || semana){
+        state.selected = {gestor, semana};
+        if(gestor && kpi.filters.gestor){ kpi.filters.gestor.value = gestor; }
+        if(semana && kpi.filters.semana){ kpi.filters.semana.value = semana; }
+        readFilters(kpi);
+        render();
+      }
+    });
+  }
+
+  function hideFloatingOnLogin(){
+    const pwd = document.querySelector('input[type="password"]');
+    const visible = pwd && pwd.offsetParent !== null;
+    Array.from(document.querySelectorAll('button,a,[role="button"]')).forEach(el=>{
+      const t = (el.textContent||'').trim().toLowerCase();
+      if(/resumen\s*\(sem\)/.test(t)){
+        el.style.display = visible ? 'none' : '';
+      }
+    });
+  }
+
+  function onReady(){
+    const kpi = findKPI();
+    if(!kpi) return;
+    readFilters(kpi);
+    injectPanel(kpi.card);
+    render();
+    Object.values(kpi.filters).forEach(sel=> sel && sel.addEventListener('change', ()=>{ readFilters(kpi); render(); }));
+    attachRowClick(kpi);
+    hideFloatingOnLogin();
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', onReady);
+  } else { onReady(); }
+
+  new MutationObserver(()=>hideFloatingOnLogin()).observe(document.documentElement, {subtree:true, childList:true});
 })();
 </script>
 
