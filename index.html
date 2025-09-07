@@ -170,8 +170,8 @@ details > summary{
         <span class="chip">Usuarios: <span id="usersCount">0</span></span>
         <button id="btnOpenConfig" class="btn btn-soft">⚙️ Configurar</button>
       
-<button id="btnRepResumen" class="btn btn-soft">Reporte (Resumen)</button>
-<button id="btnRepResumen" class="btn btn-soft">Reporte (Resumen)</button></div>
+<button id="btnReporteResumen" class="btn btn-soft">Reporte (Resumen)</button>
+<button id="btnReporteResumen" class="btn btn-soft">Reporte (Resumen)</button></div>
     </section>
 
     <!-- APP -->
@@ -183,7 +183,7 @@ details > summary{
             <button id="btnAgenda" class="btn btn-soft">🗓️ Agenda</button>
             <button id="btnRegistrar" class="btn btn-soft" disabled>📝 Registrar llamada</button>
             <button id="btnReporte" class="btn btn-soft">📊 Reporte</button>
-<button id="btnRepResumen" class="btn btn-soft">Reporte (Resumen)</button>
+<button id="btnReporteResumen" class="btn btn-soft">Reporte (Resumen)</button>
             <button id="btnFicha" class="btn btn-soft">👁️ Ver ficha</button>
             <button id="btnNuevoCliente" class="btn btn-soft">➕ Nuevo cliente</button>
             <button id="btnExport" class="btn">⭳ Exportar CSV</button>
@@ -442,6 +442,66 @@ details > summary{
       </div>
     </div>
   </div>
+
+  
+  <!-- Modal Reporte Resumen (KPI) -->
+  <div id="modalRepResumen" class="modal hidden" aria-modal="true" role="dialog">
+    <div class="card" style="width:min(1100px,96vw);">
+      <h3 class="title">📈 Reporte de llamadas — Resumen</h3>
+      <div class="grid grid-3">
+        <div><label>Semana</label>
+          <select id="rsSemana">
+            <option value="">Todas</option>
+            <option value="1">1</option>
+            <option value="2">2</option>
+            <option value="3">3</option>
+            <option value="4">4</option>
+          </select>
+        </div>
+        <div><label>Día</label>
+          <select id="rsDia">
+            <option value="">Todos</option>
+            <option value="lunes">Lunes</option>
+            <option value="martes">Martes</option>
+            <option value="miercoles">Miércoles</option>
+            <option value="jueves">Jueves</option>
+            <option value="viernes">Viernes</option>
+            <option value="sabado">Sábado</option>
+            <option value="domingo">Domingo</option>
+          </select>
+        </div>
+        <div><label>Vendedor</label><select id="rsVendedor"><option value="">Todos</option></select></div>
+        <div><label>Gestor</label><select id="rsGestor"><option value="">Todos</option></select></div>
+        <div style="display:flex;align-items:end;justify-content:flex-end;">
+          <button id="rsExport" class="btn">⬇ Exportar CSV</button>
+        </div>
+      </div>
+
+      <div class="toolbar" style="margin-top:6px;">
+        <span class="chip">A realizar: <strong id="rsKpiPlan">0</strong></span>
+        <span class="chip">Realizadas: <strong id="rsKpiDone">0</strong></span>
+        <span class="chip">% Cobertura: <strong id="rsKpiCov">0%</strong></span>
+        <div id="rsDebug" class="muted" style="margin-left:auto;"></div>
+      </div>
+
+      <div style="margin-top:8px; max-height:60vh; overflow:auto; border-radius:10px;">
+        <table class="table" id="rsTbl">
+          <thead>
+            <tr>
+              <th>Gestor</th><th>Semana</th><th>Día</th>
+              <th>A realizar</th><th>Realizadas</th><th>% Cobertura</th><th>Última llamada</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+
+      <div class="toolbar" style="justify-content:flex-end; margin-top:10px;">
+        <button id="btnRsCerrar" class="btn btn-soft">Cerrar</button>
+      </div>
+    </div>
+  </div>
+
 
   <div class="errbar" id="errbar"></div>
 
@@ -1969,1134 +2029,223 @@ document.addEventListener('click', (ev)=>{
 
 <script>
 (function(){
-  // ===== Data readiness + fallback CSV fetch =====
-  const RR = { ready:false, baseFallback: [] };
-
-  function csvParse(text){
-    const rows = [];
-    let i=0, cur='', inside=false, row=[];
-    while(i<text.length){
-      const ch = text[i];
-      if(ch === '"' ){
-        if(inside && text[i+1] === '"'){ cur+='"'; i++; }
-        else inside = !inside;
-      } else if(ch === ',' && !inside){
-        row.push(cur); cur='';
-      } else if((ch === '\n' || ch === '\r') && !inside){
-        if(cur.length || row.length){ row.push(cur); rows.push(row); row=[]; cur=''; }
-      } else {
-        cur += ch;
-      }
-      i++;
-    }
-    if(cur.length || row.length){ row.push(cur); rows.push(row); }
-    const header = rows.shift() || [];
-    const keys = header.map(h=>String(h||'').trim());
-    return rows.map(r=>{
-      const o={};
-      for(let j=0;j<keys.length;j++){ o[keys[j]] = r[j]!==undefined ? r[j] : ''; }
-      return o;
-    });
-  }
-
-  function pick(obj, candidates){
-    for(const k of candidates){
-      if(k in obj && obj[k]!=null && obj[k]!=='' ) return obj[k];
-      const alt = Object.keys(obj).find(x=>x.toLowerCase()===k.toLowerCase());
-      if(alt) return obj[alt];
-    }
-    return undefined;
-  }
-  function normStr(s){ return String(s||'').trim(); }
+  // ===== Helpers =====
+  function $(sel, root){ return (root||document).querySelector(sel); }
+  function $all(sel, root){ return Array.from((root||document).querySelectorAll(sel)); }
+  function norm(s){ return String(s||'').trim(); }
   function normDia(d){ return String(d||'').normalize('NFD').replace(/\p{Diacritic}/gu,'').toLowerCase(); }
+  function weekOfMonth(date){ if(!(date instanceof Date) || isNaN(date)) return ''; const w = 1 + Math.floor((date.getDate()-1)/7); return String(Math.min(Math.max(w,1),4)); }
+  function csvEscape(v){ if(v==null) return ''; const s=String(v); return (s.includes(',')||s.includes('\"')||s.includes('\n'))?('\"'+s.replace(/\"/g,'\"\"')+'\"'):s; }
 
-  const K = {
-    semana: ['Semana','N Semana','N_Semana','n_semana','n semana','semana'],
-    dia: ['Día','Dia','día','dia'],
-    vendedor: ['Vendedor','VENDEDOR','vendedor'],
-    gestor: ['Gestor','gestor','Gestor cartera','gestor_cartera','gestor_servicio'],
-    cod: ['Cod','Código','Codigo','codigo','cod','codigo_npg','id','ID','Id','Cod Cliente','cod cliente']
-  };
-
-  function mapRecord(x){
-    return {
-      gestor: normStr(pick(x, K.gestor) || 'NO ASIGNADO'),
-      vendedor: normStr(pick(x, K.vendedor) || ''),
-      semana: normStr(pick(x, K.semana) || ''),
-      dia: normStr(pick(x, K.dia) || ''),
-      cod: normStr(pick(x, K.cod) || '')
-    };
+  // ====== 1) Registrar llamada: añadir campo Semana (1..4) ======
+  function ensureSemanaInCallModal(){
+    const modal = $('#modalLlamada'); if(!modal) return;
+    if($('#callSemana', modal)) return;
+    const grid = modal.querySelector('.grid.grid-2') || modal;
+    const box = document.createElement('div');
+    box.innerHTML = '<label>Semana (1-4)</label><select id="callSemana"><option value="">(auto)</option><option>1</option><option>2</option><option>3</option><option>4</option></select>';
+    // Insert after "Fecha y hora"
+    const fecha = $('#callFechaHora'); 
+    (fecha && fecha.parentElement) ? fecha.parentElement.insertAdjacentElement('afterend', box) : grid.appendChild(box);
   }
-
-  function getBase(){
-    if(window.STATE && Array.isArray(STATE.joined) && STATE.joined.length){
-      return STATE.joined.map(mapRecord);
-    }
-    return RR.baseFallback; // puede estar vacío si no se pudo descargar aún
+  function presetSemanaCall(){
+    const sel = $('#callSemana'); const fh = $('#callFechaHora'); if(!sel || !fh) return;
+    const d = new Date(fh.value || Date.now()); sel.value = weekOfMonth(d);
   }
-
-  function ensureFiltersPopulated(){
-    // Poblar desde getBase(), si vacío intenta fallback
-    const base = getBase();
-    if(!base.length){ return false; }
-    const selSemana = document.getElementById('rrSemana');
-    const selVend = document.getElementById('rrVendedor');
-    const selGest = document.getElementById('rrGestor');
-    function addOpts(sel, values){
-      if(!sel) return;
-      const have = new Set([...sel.options].map(o=>o.value));
-      values.forEach(v=>{
-        if(v && !have.has(v)){ const o=document.createElement('option'); o.value=v; o.textContent=v; sel.appendChild(o); }
-      });
-    }
-    const semanas = [...new Set(base.map(x=>x.semana).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'es',{numeric:true}));
-    const vendedores = [...new Set(base.map(x=>x.vendedor).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'es',{numeric:true}));
-    const gestores = [...new Set(base.map(x=>x.gestor).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'es',{numeric:true}));
-    addOpts(selSemana, semanas);
-    addOpts(selVend, vendedores);
-    addOpts(selGest, gestores);
-    return true;
-  }
-
-  async function fetchCalendarioFallback(){
-    try{
-      const url = (window.DEFAULT_CONFIG && DEFAULT_CONFIG.sources && DEFAULT_CONFIG.sources.calendario && DEFAULT_CONFIG.sources.calendario.url) || '';
-      if(!url) return;
-      const res = await fetch(url, {cache:'no-store'});
-      const txt = await res.text();
-      const rows = csvParse(txt).map(mapRecord);
-      RR.baseFallback = rows;
-    }catch(e){ console.warn('Fallback Calendario error', e); }
-  }
-
-  // Exponer hook para pantalla
-  
-window.__rrEnsureDataAndFilters = async function(){
-  // Try immediate population
-  if(typeof ensureSemanaBaseline==='function') ensureSemanaBaseline();
-  if(typeof ensureFiltersPopulated==='function' && ensureFiltersPopulated()){
-    if(typeof ensureSemanaBaseline==='function') ensureSemanaBaseline();
-    return;
-  }
-  // Fetch fallback Calendario
-  if(typeof fetchCalendarioFallback==='function') await fetchCalendarioFallback();
-  if(typeof ensureFiltersPopulated==='function' && ensureFiltersPopulated()){
-    if(typeof ensureSemanaBaseline==='function') ensureSemanaBaseline();
-    return;
-  }
-  // Wait for STATE.joined
-  let tries=0;
-  while(tries<60 && !(window.STATE && Array.isArray(STATE.joined) && STATE.joined.length)){
-    await new Promise(r=>setTimeout(r,500));
-    tries++;
-  }
-  if(typeof ensureFiltersPopulated==='function') ensureFiltersPopulated();
-  if(typeof ensureSemanaBaseline==='function') ensureSemanaBaseline();
-};
-
-
-  // Integrar en la navegación de la pantalla resumen
-  const _oldShow = window.__showResumenScreen;
-  window.__showResumenScreen = async function(){
-    if(typeof _oldShow==='function'){ _oldShow(); }
-    try { await window.__rrEnsureDataAndFilters(); } catch(_){}
-    try { if(typeof window.renderRR==='function') window.renderRR(); } catch(_){}
-  };
-})();
-</script>
-
-
-<script>
-// --- Override tardío del Calendario (se ejecuta al final) ---
-(function(){
-  try {
-    const urlCalendario = "https://docs.google.com/spreadsheets/d/e/2PACX-1vSGjr-XdLSamHpGQfoORmLfntJbLd-UbFpD7NdMM14x2JdMhxOYHTWQBlhYCMDu0ZTy3AYS-1Y3q91Y/pub?gid=223681507&single=true&output=csv";
-    if (window.DEFAULT_CONFIG && DEFAULT_CONFIG.sources && DEFAULT_CONFIG.sources.calendario) {
-      DEFAULT_CONFIG.sources.calendario.url = urlCalendario;
-    }
-  } catch(e){}
-})();
-</script>
-
-
-<script>
-(function(){
-  function show(el){ if(!el) return; el.style.display='block'; el.classList.remove('hidden'); }
-  function hide(el){ if(!el) return; el.style.display='none'; el.classList.add('hidden'); }
-  window.__showResumenScreen = async function(){
-    const app = document.getElementById('app');
-    const scr = document.getElementById('screenResumen');
-    hide(app); show(scr);
-    if(typeof window.__rrEnsureDataAndFilters==='function'){ await window.__rrEnsureDataAndFilters(); }
-    if(typeof window.renderRR==='function') window.renderRR();
-  };
-  document.addEventListener('click', function(ev){
-    if(ev.target && ev.target.id==='rrVolver'){
-      const app = document.getElementById('app');
-      const scr = document.getElementById('screenResumen');
-      hide(scr); show(app);
+  document.addEventListener('click', (ev)=>{
+    if(ev.target && ev.target.id==='btnRegistrar'){
+      setTimeout(()=>{ ensureSemanaInCallModal(); presetSemanaCall(); }, 80);
     }
   });
-})();
-</script>
-
-
-<script>
-document.addEventListener('click', (ev)=>{
-  if(ev.target && ev.target.id === 'btnReporteResumen'){
-    if(typeof window.__showResumenScreen==='function'){ window.__showResumenScreen(); }
-  }
-});
-</script>
-
-
-<script>
-(function(){
-  // Si tras asegurar datos no hay semanas, crear rango 1..53 como fallback visual
-  
-function ensureSemanaBaseline(){
-  const sel = document.getElementById('rrSemana');
-  if(!sel) return;
-  // Reset and set only Semana 1..4
-  const keepFirst = sel.options.length ? sel.options[0] : null;
-  sel.innerHTML = '';
-  if(keepFirst){
-    sel.appendChild(keepFirst);
-    keepFirst.textContent = 'Todas';
-    keepFirst.value = '';
-  } else {
-    const first = document.createElement('option');
-    first.value = ''; first.textContent = 'Todas';
-    sel.appendChild(first);
-  }
-  for(let w=1; w<=4; w++){
-    const o = document.createElement('option');
-    o.value = String(w); o.textContent = String(w);
-    sel.appendChild(o);
-  }
-}
-
-    }
-  }
-  // esperar a que la pantalla esté visible
-  const obs = new MutationObserver(()=>{
-    const scr = document.getElementById('screenResumen');
-    if(scr && scr.style.display !== 'none'){
-      ensureSemanaBaseline();
-    }
-  });
-  obs.observe(document.body, {attributes:true, childList:true, subtree:true});
-})();
-</script>
-
-
-<script>
-(function(){
-  // Fuerza rellenado de Vendedor/Gestor tras la primera renderización si quedaran vacíos
-  function enforceVendGest(){
-    const selVend = document.getElementById('rrVendedor');
-    const selGest = document.getElementById('rrGestor');
-    const needVend = selVend && selVend.options.length<=1;
-    const needGest = selGest && selGest.options.length<=1;
-    if(!needVend && !needGest) return;
-
-    // Recolectar base desde STATE.joined o fallback global si existe
-    let base = [];
+  // Si el guardado original corre aparte, reforzamos que la última llamada tenga 'semana'
+  function stampSemanaOnLastCall(){
     try{
-      if(window.STATE && Array.isArray(STATE.joined) && STATE.joined.length){
-        base = STATE.joined;
-      } else if(window.RR && Array.isArray(RR.baseFallback)){
-        base = RR.baseFallback;
-      }
-    }catch(_){}
-    if(!base || !base.length) return;
-
-    function getVals(keyNames){
-      const set = new Set();
-      for(const x of base){
-        // intentar múltiples nombres de campo
-        for(const k of keyNames){
-          const foundKey = Object.keys(x).find(n=>n.toLowerCase()===k.toLowerCase());
-          if(foundKey && String(x[foundKey]).trim()){
-            set.add(String(x[foundKey]).trim());
-            break;
-          }
+      const arr = JSON.parse(localStorage.getItem('llamadas_records') || '[]');
+      if(Array.isArray(arr) && arr.length){
+        const last = arr[arr.length-1];
+        if(!last.semana){
+          const fh = last.fecha_hora || last.fecha || '';
+          const d = new Date(fh);
+          last.semana = $('#callSemana') ? ($('#callSemana').value || weekOfMonth(d)) : weekOfMonth(d);
+          localStorage.setItem('llamadas_records', JSON.stringify(arr));
         }
       }
-      return Array.from(set).sort((a,b)=>a.localeCompare(b,'es',{numeric:true}));
-    }
-    if(needVend){
-      getVals(['Vendedor','VENDEDOR','vendedor']).forEach(v=>{
-        const o=document.createElement('option'); o.value=v; o.textContent=v; selVend.appendChild(o);
-      });
-    }
-    if(needGest){
-      getVals(['Gestor','gestor','Gestor cartera','gestor_cartera','gestor_servicio']).forEach(v=>{
-        const o=document.createElement('option'); o.value=v; o.textContent=v; selGest.appendChild(o);
-      });
-    }
+    }catch(_){}
   }
-  // Ejecutar cuando se muestre la pantalla y luego tras 1s por si llega data
   document.addEventListener('click', (ev)=>{
-    if(ev.target && ev.target.id==='btnReporteResumen'){
-      setTimeout(enforceVendGest, 300);
-      setTimeout(enforceVendGest, 1200);
+    if(ev.target && ev.target.id==='btnCallGuardar'){
+      setTimeout(stampSemanaOnLastCall, 300);
     }
   });
-  // También al entrar por cualquier otro medio
-  if(typeof window.__showResumenScreen==='function'){
-    const old = window.__showResumenScreen;
-    window.__showResumenScreen = async function(){
-      await old();
-      setTimeout(enforceVendGest, 300);
-      setTimeout(enforceVendGest, 1200);
-    };
+
+  // ====== 2) Reporte de llamadas (DETALLE): conservar filtros y añadir Semana sin romper UI ======
+  function ensureSemanaFilterInReport(){
+    const modal = $('#modalReporte'); if(!modal) return;
+    if($('#repSemana', modal)) return;
+    const grid = modal.querySelector('.grid.grid-3') || modal;
+    const holder = document.createElement('div');
+    holder.innerHTML = '<label>Semana</label><select id="repSemana"><option value="">(todas)</option><option>1</option><option>2</option><option>3</option><option>4</option></select>';
+    grid.appendChild(holder);
   }
-})();
-</script>
-
-
-<script>
-(function(){
-  const CAL_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vSGjr-XdLSamHpGQfoORmLfntJbLd-UbFpD7NdMM14x2JdMhxOYHTWQBlhYCMDu0ZTy3AYS-1Y3q91Y/pub?gid=223681507&single=true&output=csv";
-  let CAL_ROWS = [];
-  let PLAN = [];
-  const DIAS_OK = ['lunes','martes','miercoles','miércoles','jueves','viernes','sabado','sábado','domingo'];
-
-  function norm(s){ return String(s||'').trim(); }
-  function normDia(d){
-    return String(d||'').normalize('NFD').replace(/\p{Diacritic}/gu,'').toLowerCase();
+  function computeWeekFromRow(tr){
+    const td = tr.cells[0]; if(!td) return '';
+    const txt = td.textContent || ''; const d = new Date(txt);
+    if(isNaN(d)) return '';
+    return weekOfMonth(d);
   }
-
-  function csvParse(text){
-    const rows = [];
-    let row = [], cur = '', q=false;
-    for(let i=0;i<text.length;i++){
-      const ch = text[i];
-      if(ch === '"'){
-        if(q && text[i+1] === '"'){ cur+='"'; i++; }
-        else q = !q;
-      } else if(ch === ',' && !q){
-        row.push(cur); cur='';
-      } else if((ch === '\n' || ch === '\r') && !q){
-        if(cur.length || row.length){ row.push(cur); rows.push(row); row=[]; cur=''; }
-      } else {
-        cur += ch;
-      }
+  function patchReportTable(){
+    const tbl = $('#repTbl'); if(!tbl || !tbl.tHead) return;
+    const heads = Array.from(tbl.tHead.rows[0].cells).map(c=>c.textContent.trim().toLowerCase());
+    if(!heads.includes('semana')){
+      // insert "Semana" after Fecha/Hora
+      const th = document.createElement('th'); th.textContent = 'Semana';
+      const trh = tbl.tHead.rows[0];
+      trh.insertBefore(th, trh.cells[1] || null);
+      // add cell for each row
+      $all('tbody tr', tbl).forEach(tr=>{
+        const cell = document.createElement('td'); cell.textContent = computeWeekFromRow(tr) || '-';
+        tr.insertBefore(cell, tr.cells[1] || null);
+      });
+    } else {
+      // refresh values
+      $all('tbody tr', tbl).forEach(tr=>{
+        const idx = 1; // second column is Semana
+        if(tr.cells[idx]) tr.cells[idx].textContent = computeWeekFromRow(tr) || '-';
+      });
     }
-    if(cur.length || row.length){ row.push(cur); rows.push(row); }
-    if(rows.length===0) return [];
-    const header = rows.shift().map(h=>String(h||'').trim());
-    return rows.filter(r=>r.some(x=>String(x||'').trim()!=='')).map(r=>{
-      const o={};
-      for(let j=0;j<header.length;j++){ o[header[j]] = r[j]!==undefined ? r[j] : ''; }
-      return o;
+  }
+  function applyWeekFilterToTable(){
+    const sel = $('#repSemana'); const wk = sel ? sel.value : '';
+    const tbl = $('#repTbl'); if(!tbl) return;
+    $all('tbody tr', tbl).forEach(tr=>{
+      const w = computeWeekFromRow(tr);
+      tr.style.display = (!wk || wk === w) ? '' : 'none';
     });
   }
-
-  function pick(obj, names){
-    const keys = Object.keys(obj);
-    for(const n of names){
-      if(n in obj) return obj[n];
-      const f = keys.find(k=>k.toLowerCase()===n.toLowerCase());
-      if(f) return obj[f];
+  document.addEventListener('click', (ev)=>{
+    if(ev.target && (ev.target.id==='btnReporte' || ev.target.matches('[data-open="modalReporte"]'))){
+      setTimeout(()=>{ ensureSemanaFilterInReport(); patchReportTable(); applyWeekFilterToTable(); }, 200);
     }
-    return '';
-  }
+  });
+  document.addEventListener('change', (ev)=>{
+    if(ev.target && ev.target.id==='repSemana'){ applyWeekFilterToTable(); }
+  });
 
-  function mapCalRow(x){
-    return {
-      cod: norm(pick(x,['Cod','Código','Codigo','cod','ID','Id','Cod Cliente'])),
-      gestor: norm(pick(x,['Gestor','gestor','Gestor cartera','gestor_cartera'])) || 'NO ASIGNADO',
-      vendedor: norm(pick(x,['Vendedor','VENDEDOR','vendedor'])),
-      semana: norm(pick(x,['Semana','N Semana','semana'])),
-      dia: norm(pick(x,['Día','Dia','día','dia']))
-    };
-  }
-
-  async function loadCalendario(){
-    const res = await fetch(CAL_URL, {cache:'no-store'});
-    const txt = await res.text();
-    CAL_ROWS = csvParse(txt).map(mapCalRow).filter(r=>r.cod);
-    PLAN = CAL_ROWS; // ya vienen con semana/dia/gestor/vendedor
-  }
-
-  function ensureSemana14(){
-    const sel = document.getElementById('rrSemana');
-    if(!sel) return;
-    const first = sel.options[0] || (function(){const o=document.createElement('option'); o.value=''; o.textContent='Todas'; sel.appendChild(o); return o;})();
-    sel.innerHTML='';
-    sel.appendChild(first);
-    first.value=''; first.textContent='Todas';
-    for(let w=1;w<=4;w++){ const o=document.createElement('option'); o.value=String(w); o.textContent=String(w); sel.appendChild(o); }
-  }
-
-  function populateFilters(){
-    ensureSemana14();
-    const selVend = document.getElementById('rrVendedor');
-    const selGest = document.getElementById('rrGestor');
-    function fill(sel, values){
-      if(!sel) return;
-      const first = sel.options[0] || (function(){const o=document.createElement('option'); o.value=''; o.textContent='Todos'; sel.appendChild(o); return o;})();
-      sel.innerHTML=''; sel.appendChild(first); first.value=''; first.textContent='Todos';
-      [...new Set(values.filter(v=>v))].sort((a,b)=>a.localeCompare(b,'es',{numeric:true}))
-        .forEach(v=>{ const o=document.createElement('option'); o.value=v; o.textContent=v; sel.appendChild(o); });
-    }
-    fill(selVend, PLAN.map(r=>r.vendedor));
-    fill(selGest, PLAN.map(r=>r.gestor));
-  }
-
-  function buildPlanIndex(rows){
-    const map = new Map();
-    for(const r of rows){
-      const k = r.gestor+'||'+r.semana+'||'+normDia(r.dia);
-      const it = map.get(k) || {gestor:r.gestor, semana:r.semana, dia:r.dia, asignados:0};
-      it.asignados += 1;
-      map.set(k, it);
-    }
-    return map;
-  }
-
-  function getCalls(){
-    let calls = [];
-    try{ calls = JSON.parse(localStorage.getItem('llamadas_records') || '[]'); }catch(_){}
+  // ====== 3) Reporte Resumen (modal propio, sin tocar el de Reporte) ======
+  function uniq(arr){ return Array.from(new Set(arr)).filter(Boolean).sort((a,b)=> String(a).localeCompare(String(b),'es',{numeric:true})); }
+  function parseCalls(){
+    let calls = []; try{ calls = JSON.parse(localStorage.getItem('llamadas_records') || '[]'); }catch(_){}
     if(window.STATE && Array.isArray(STATE.calls)) calls = calls.concat(STATE.calls);
-    return calls;
-  }
-
-  function buildDoneIndex(plan){
-    const idxByCod = new Map();
-    for(const r of plan){ if(r.cod) idxByCod.set(r.cod, r); }
-    const map = new Map();
-    for(const c of getCalls()){
-      const cod = norm(c.cod || c.codigo || c.cod_cliente || c.Cod || '');
-      const planRow = idxByCod.get(cod);
-      if(!planRow) continue; // fuera de plan: opcionalmente se podría contar aparte
-      const k = planRow.gestor+'||'+planRow.semana+'||'+normDia(planRow.dia);
-      const it = map.get(k) || {gestor:planRow.gestor, semana:planRow.semana, dia:planRow.dia, realizadas:0, last:null};
-      it.realizadas += 1;
-      const d = new Date(c.fecha_hora||c.fecha||c.timestamp||'');
-      if(!isNaN(d)) it.last = (!it.last || new Date(it.last) < d) ? d.toISOString() : it.last;
-      map.set(k, it);
-    }
-    return map;
-  }
-
-  function render(){
-    const fSemana = (document.getElementById('rrSemana')||{}).value || '';
-    const fDia = (document.getElementById('rrDia')||{}).value || '';
-    const fVend = (document.getElementById('rrVendedor')||{}).value || '';
-    const fGest = (document.getElementById('rrGestor')||{}).value || '';
-
-    const base = PLAN.filter(x=>{
-      if(fSemana && String(x.semana)!==String(fSemana)) return false;
-      if(fDia && normDia(x.dia)!==normDia(fDia)) return false;
-      if(fVend && x.vendedor!==fVend) return false;
-      if(fGest && x.gestor!==fGest) return false;
-      return true;
-    });
-
-    const planMap = buildPlanIndex(base);
-    const doneMap = buildDoneIndex(PLAN); // hechas se mapean al plan total; filtros se aplican por la clave
-    const keys = new Set([...planMap.keys(), ...doneMap.keys()]);
-    const rows = [];
-    for(const k of keys){
-      const p = planMap.get(k) || {gestor:'', semana:'', dia:'', asignados:0};
-      const d = doneMap.get(k) || {realizadas:0, last:null};
-      const asign = p.asignados||0, hechas = d.realizadas||0;
-      const pct = asign ? (hechas/asign*100) : (hechas?100:0);
-      rows.push({gestor:p.gestor||d.gestor||'', semana:p.semana||d.semana||'', dia:p.dia||d.dia||'', asignados:asign, realizadas:hechas, pct, last:d.last});
-    }
-    rows.sort((a,b)=> a.gestor.localeCompare(b.gestor,'es',{numeric:true}) ||
-                     String(a.semana).localeCompare(String(b.semana),'es',{numeric:true}) ||
-                     String(a.dia).localeCompare(String(b.dia),'es',{numeric:true}));
-
-    const tb = document.querySelector('#rrTbl tbody');
-    if(tb){
-      tb.innerHTML = rows.map(r=>'<tr>'
-        +'<td>'+ (r.gestor||'-') +'</td>'
-        +'<td>'+ (r.semana||'-') +'</td>'
-        +'<td>'+ (r.dia||'-') +'</td>'
-        +'<td>'+ r.asignados +'</td>'
-        +'<td>'+ r.realizadas +'</td>'
-        +'<td>'+ r.pct.toFixed(1) +'%' +'</td>'
-        +'<td>'+ (r.last ? new Date(r.last).toLocaleString() : '-') +'</td>'
-      +'</tr>').join('');
-    }
-
-    // KPIs
-    let asign=0, hechas=0; rows.forEach(r=>{ asign+=r.asignados; hechas+=r.realizadas; });
-    const cov = asign ? (hechas/asign*100) : (hechas?100:0);
-    const a = document.getElementById('kpiAsignadas'); if(a) a.textContent = String(asign);
-    const h = document.getElementById('kpiHechas'); if(h) h.textContent = String(hechas);
-    const c = document.getElementById('kpiCobertura'); if(c) c.textContent = cov.toFixed(1)+'%';
-  }
-
-  async function initResumenStandalone(){
-    // cargar csv
-    await loadCalendario();
-    populateFilters();
-    // listeners
-    ['rrSemana','rrDia','rrVendedor','rrGestor'].forEach(id=>{
-      const el = document.getElementById(id);
-      if(el) el.addEventListener('change', render);
-    });
-    render();
-  }
-
-  // enganchar al botón/pantalla ya existente
-  const oldShow = window.__showResumenScreen;
-  window.__showResumenScreen = async function(){
-    if(typeof oldShow==='function'){ oldShow(); }
-    await initResumenStandalone();
-  };
-})();
-</script>
-
-
-<script>
-(function(){
-  // --- Autoload Calendario and robustly populate filters/render ---
-  const CAL_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vSGjr-XdLSamHpGQfoORmLfntJbLd-UbFpD7NdMM14x2JdMhxOYHTWQBlhYCMDu0ZTy3AYS-1Y3q91Y/pub?gid=223681507&single=true&output=csv";
-  let PLAN = [];        // [{cod, gestor, vendedor, semana, dia}]
-  let CAL_READY = false;
-  let CAL_LOADING = false;
-
-  const DIAS_OK = ['lunes','martes','miercoles','miércoles','jueves','viernes','sabado','sábado','domingo'];
-  function norm(s){ return String(s||'').trim(); }
-  function normDia(d){ return String(d||'').normalize('NFD').replace(/\p{Diacritic}/gu,'').toLowerCase(); }
-
-  function csvParse(text){
-    const rows = [];
-    let row = [], cur = '', q=false;
-    for(let i=0;i<text.length;i++){
-      const ch = text[i];
-      if(ch === '"'){
-        if(q && text[i+1] === '"'){ cur+='"'; i++; }
-        else q = !q;
-      } else if(ch === ',' && !q){
-        row.push(cur); cur='';
-      } else if((ch === '\n' || ch === '\r') && !q){
-        if(cur.length || row.length){ row.push(cur); rows.push(row); row=[]; cur=''; }
-      } else {
-        cur += ch;
-      }
-    }
-    if(cur.length || row.length){ row.push(cur); rows.push(row); }
-    if(rows.length===0) return [];
-    const header = rows.shift().map(h=>String(h||'').trim());
-    return rows.filter(r=>r.some(x=>String(x||'').trim()!=='')).map(r=>{
-      const o={};
-      for(let j=0;j<header.length;j++){ o[header[j]] = r[j]!==undefined ? r[j] : ''; }
-      return o;
+    return calls.map(c=>{
+      const d = new Date(c.fecha_hora || c.fecha || '');
+      const dia = d.toLocaleDateString('es-ES',{weekday:'long'});
+      const semana = c.semana || weekOfMonth(d);
+      return {
+        gestor: c.gestor_servicio || c.gestor || '',
+        vendedor: c.vendedor || c.Vendedor || '',
+        dia: dia, semana: semana,
+        fecha: d, cod: c.cod || c.codigo || c['Cod Empresa'] || ''
+      };
     });
   }
-
-  function pick(obj, names){
-    const keys = Object.keys(obj);
-    for(const n of names){
-      if(n in obj && obj[n]!==undefined) return obj[n];
-      const f = keys.find(k=>k.toLowerCase()===n.toLowerCase());
-      if(f) return obj[f];
-    }
-    return '';
+  function parsePlan(){
+    // Tomar de STATE.calendario; tolerante a encabezados
+    const plan = (window.STATE && Array.isArray(STATE.calendario) ? STATE.calendario : []).map(r=>{
+      const g = r['gestor_servicio']||r['Gestor']||r['GESTOR_SERVICIO']||'';
+      const v = r['vendedor']||r['Vendedor']||r['VENDEDOR']||'';
+      const d = r['DIA']||r['Dia']||r['día']||r['dia']||'';
+      const s = r['SEMANA']||r['Semana']||r['semana']||'';
+      return { gestor:g, vendedor:v, dia:d, semana:String(s||'').trim() };
+    }).filter(x=>x.dia && x.semana);
+    return plan;
   }
-
-  function mapCalRow(x){
-    return {
-      cod: norm(pick(x,['Cod','Código','Codigo','cod','ID','Id','Cod Cliente','Cod Cliente','CODIGO'])),
-      gestor: norm(pick(x,['Gestor','gestor','Gestor cartera','gestor_cartera','GESTOR'])) || 'NO ASIGNADO',
-      vendedor: norm(pick(x,['Vendedor','VENDEDOR','vendedor','VENDEDOR(A)'])),
-      semana: norm(pick(x,['Semana','N Semana','N_Semana','semana','SEMANA'])),
-      dia: norm(pick(x,['Día','Dia','día','dia','DIA']))
-    };
-  }
-
-  async function ensureCalendario(){
-    if(CAL_READY || CAL_LOADING) return;
-    CAL_LOADING = true;
-    try{
-      const res = await fetch(CAL_URL, {cache:'no-store', mode:'cors'});
-      const txt = await res.text();
-      const rows = csvParse(txt).map(mapCalRow).filter(r=>r.cod);
-      PLAN = rows;
-      CAL_READY = true;
-    }catch(e){
-      console.warn('No se pudo cargar Calendario', e);
-    }finally{
-      CAL_LOADING = false;
-    }
-  }
-
-  function ensureSemana14(){
-    const sel = document.getElementById('rrSemana');
-    if(!sel) return;
-    const first = sel.options[0] || (function(){const o=document.createElement('option'); o.value=''; o.textContent='Todas'; sel.appendChild(o); return o;})();
-    sel.innerHTML='';
-    sel.appendChild(first);
-    first.value=''; first.textContent='Todas';
-    for(let w=1;w<=4;w++){ const o=document.createElement('option'); o.value=String(w); o.textContent=String(w); sel.appendChild(o); }
-  }
-
-  function populateVG(){
-    const selVend = document.getElementById('rrVendedor');
-    const selGest = document.getElementById('rrGestor');
-    function fill(sel, values, placeholder){
-      if(!sel) return;
-      const first = sel.options[0] || (function(){const o=document.createElement('option'); o.value=''; o.textContent=placeholder; sel.appendChild(o); return o;})();
-      sel.innerHTML=''; sel.appendChild(first); first.value=''; first.textContent=placeholder;
-      [...new Set(values.filter(v=>!!v))].sort((a,b)=>a.localeCompare(b,'es',{numeric:true}))
-        .forEach(v=>{ const o=document.createElement('option'); o.value=v; o.textContent=v; sel.appendChild(o); });
-    }
-    fill(selVend, PLAN.map(r=>r.vendedor), 'Todos');
-    fill(selGest, PLAN.map(r=>r.gestor), 'Todos');
-  }
-
-  function getCalls(){
-    let calls = [];
-    try{ calls = JSON.parse(localStorage.getItem('llamadas_records') || '[]'); }catch(_){}
-    if(window.STATE && Array.isArray(STATE.calls)) calls = calls.concat(STATE.calls);
-    return calls;
-  }
-
-  function buildPlanIndex(rows){
-    const map = new Map();
-    for(const r of rows){
-      const k = r.gestor+'||'+r.semana+'||'+normDia(r.dia);
-      const it = map.get(k) || {gestor:r.gestor, semana:r.semana, dia:r.dia, asignados:0};
-      it.asignados += 1;
-      map.set(k, it);
-    }
-    return map;
-  }
-
-  function buildDoneIndex(plan){
-    const idxByCod = new Map();
-    for(const r of plan){ if(r.cod) idxByCod.set(r.cod, r); }
-    const map = new Map();
-    for(const c of getCalls()){
-      const cod = norm(c.cod || c.codigo || c.cod_cliente || c.Cod || '');
-      const planRow = idxByCod.get(cod);
-      if(!planRow) continue;
-      const k = planRow.gestor+'||'+planRow.semana+'||'+normDia(planRow.dia);
-      const it = map.get(k) || {gestor:planRow.gestor, semana:planRow.semana, dia:planRow.dia, realizadas:0, last:null};
-      it.realizadas += 1;
-      const d = new Date(c.fecha_hora||c.fecha||c.timestamp||'');
-      if(!isNaN(d)) it.last = (!it.last || new Date(it.last) < d) ? d.toISOString() : it.last;
-      map.set(k, it);
-    }
-    return map;
-  }
-
-  function renderResumen(){
-    const fSemana = (document.getElementById('rrSemana')||{}).value || '';
-    const fDia = (document.getElementById('rrDia')||{}).value || '';
-    const fVend = (document.getElementById('rrVendedor')||{}).value || '';
-    const fGest = (document.getElementById('rrGestor')||{}).value || '';
-
-    const base = PLAN.filter(x=>{
-      if(fSemana && String(x.semana)!==String(fSemana)) return false;
-      if(fDia && normDia(x.dia)!==normDia(fDia)) return false;
-      if(fVend && x.vendedor!==fVend) return false;
-      if(fGest && x.gestor!==fGest) return false;
-      return true;
-    });
-
-    const planMap = buildPlanIndex(base);
-    const doneMap = buildDoneIndex(PLAN);
-    const keys = new Set([...planMap.keys(), ...doneMap.keys()]);
-    const rows = [];
-    for(const k of keys){
-      const p = planMap.get(k) || {gestor:'', semana:'', dia:'', asignados:0};
-      const d = doneMap.get(k) || {realizadas:0, last:null};
-      const asign = p.asignados||0, hechas = d.realizadas||0;
-      const pct = asign ? (hechas/asign*100) : (hechas?100:0);
-      rows.push({gestor:p.gestor||d.gestor||'', semana:p.semana||d.semana||'', dia:p.dia||d.dia||'', asignados:asign, realizadas:hechas, pct, last:d.last});
-    }
-    rows.sort((a,b)=> a.gestor.localeCompare(b.gestor,'es',{numeric:true}) ||
-                     String(a.semana).localeCompare(String(b.semana),'es',{numeric:true}) ||
-                     String(a.dia).localeCompare(String(b.dia),'es',{numeric:true}));
-
-    const tb = document.querySelector('#rrTbl tbody');
-    if(tb){
-      tb.innerHTML = rows.map(r=>'<tr>'
-        +'<td>'+ (r.gestor||'-') +'</td>'
-        +'<td>'+ (r.semana||'-') +'</td>'
-        +'<td>'+ (r.dia||'-') +'</td>'
-        +'<td>'+ r.asignados +'</td>'
-        +'<td>'+ r.realizadas +'</td>'
-        +'<td>'+ r.pct.toFixed(1) +'%' +'</td>'
-        +'<td>'+ (r.last ? new Date(r.last).toLocaleString() : '-') +'</td>'
-      +'</tr>').join('');
-    }
-
-    // KPIs
-    let asign=0, hechas=0; rows.forEach(r=>{ asign+=r.asignados; hechas+=r.realizadas; });
-    const cov = asign ? (hechas/asign*100) : (hechas?100:0);
-    const a = document.getElementById('kpiAsignadas'); if(a) a.textContent = String(asign);
-    const h = document.getElementById('kpiHechas'); if(h) h.textContent = String(hechas);
-    const c = document.getElementById('kpiCobertura'); if(c) c.textContent = cov.toFixed(1)+'%';
-  }
-
-  async function bootResumen(){
-    ensureSemana14();
-    await ensureCalendario();
-    if(!PLAN.length){
-      // Si no hay plan, no podemos poblar vendedor/gestor; salir silenciosamente
-      return;
-    }
-    populateVG();
-    ['rrSemana','rrDia','rrVendedor','rrGestor'].forEach(id=>{
-      const el = document.getElementById(id);
-      if(el && !el.__rrBound){ el.addEventListener('change', renderResumen); el.__rrBound=true; }
-    });
+  function openResumen(){
+    const m = $('#modalRepResumen'); if(!m) return;
+    m.classList.remove('hidden'); m.style.display='flex'; document.body.classList.add('no-scroll');
+    // Poblado de selects
+    const plan = parsePlan();
+    const calls = parseCalls();
+    const vendedores = uniq(plan.map(p=>p.vendedor).concat(calls.map(c=>c.vendedor)));
+    const gestores = uniq(plan.map(p=>p.gestor).concat(calls.map(c=>c.gestor)));
+    const fill = (sel, arr, first)=>{ sel.innerHTML = '<option value="">' + first + '</option>' + arr.map(v=>'<option>'+v+'</option>').join(''); };
+    fill($('#rsVendedor'), vendedores, 'Todos');
+    fill($('#rsGestor'), gestores, 'Todos');
     renderResumen();
   }
-
-  // Ejecutar al cargar el DOM y también cuando se pulsa el botón de reporte
-  document.addEventListener('DOMContentLoaded', ()=>{
-    setTimeout(bootResumen, 0);
-  });
-  document.addEventListener('click', (ev)=>{
-    if(ev.target && ev.target.id==='btnReporteResumen'){
-      setTimeout(bootResumen, 0);
-    }
-  });
-})();
-</script>
-
-
-<script>
-// Intercept any legacy clicks that might reopen/close the old modal
-document.addEventListener('click', function(ev){
-  const t = ev.target;
-  if(!t) return;
-  if(t.id === 'btnReporteResumen'){
-    ev.preventDefault(); ev.stopPropagation();
-    if(typeof window.__showResumenScreen==='function'){ window.__showResumenScreen(); }
+  function closeResumen(){
+    const m = $('#modalRepResumen'); if(!m) return; m.classList.add('hidden'); m.style.display='none'; document.body.classList.remove('no-scroll');
   }
-}, true);
-</script>
-
-
-<script>
-(function(){
-  const BTN_ID = 'btnRepResumen';
-  const CAL_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vSGjr-XdLSamHpGQfoORmLfntJbLd-UbFpD7NdMM14x2JdMhxOYHTWQBlhYCMDu0ZTy3AYS-1Y3q91Y/pub?gid=223681507&single=true&output=csv";
-  let PLAN_ALL = [];   // todas filas mapeadas (aunque no tengan COD)
-  let PLAN_IDX_BY_COD = new Map();
-  let BOOTED = false;
-
-  function norm(s){ return String(s||'').trim(); }
-  function normDia(d){ return String(d||'').normalize('NFD').replace(/\p{Diacritic}/gu,'').toLowerCase(); }
-
-  function csvParse(text){
-    const rows = [];
-    let row = [], cur = '', q=false;
-    for(let i=0;i<text.length;i++){
-      const ch = text[i];
-      if(ch === '"'){
-        if(q && text[i+1] === '"'){ cur+='"'; i++; }
-        else q = !q;
-      } else if(ch === ',' && !q){
-        row.push(cur); cur='';
-      } else if((ch === '\\n' || ch === '\\r') && !q){
-        if(cur.length || row.length){ row.push(cur); rows.push(row); row=[]; cur=''; }
-      } else {
-        cur += ch;
-      }
-    }
-    if(cur.length || row.length){ row.push(cur); rows.push(row); }
-    if(rows.length===0) return [];
-    const header = rows.shift().map(h=>String(h||'').trim());
-    return rows.filter(r=>r.some(x=>String(x||'').trim()!=='')).map(r=>{
-      const o={};
-      for(let j=0;j<header.length;j++){ o[header[j]] = r[j]!==undefined ? r[j] : ''; }
-      return o;
-    });
-  }
-
-  function pick(obj, names){
-    const keys = Object.keys(obj);
-    for(const n of names){
-      if(n in obj && obj[n]!=null) return obj[n];
-      const f = keys.find(k=>k.toLowerCase()===n.toLowerCase());
-      if(f) return obj[f];
-    }
-    return '';
-  }
-
-  function mapCalRow(x){
-    const cod = norm(pick(x,['Cod','Código','Codigo','cod','ID','Id','Cod Cliente','CODIGO','codigo_npg']));
-    const gestor = norm(pick(x,['Gestor','gestor','Gestor cartera','gestor_cartera','GESTOR']));
-    const vendedor = norm(pick(x,['Vendedor','VENDEDOR','vendedor','VENDEDOR(A)']));
-    const semana = norm(pick(x,['Semana','N Semana','N_Semana','semana','SEMANA']));
-    const dia = norm(pick(x,['Día','Dia','día','dia','DIA']));
-    return { cod, gestor: gestor || 'NO ASIGNADO', vendedor, semana, dia };
-  }
-
-  async function loadCalendario(){
-    const res = await fetch(CAL_URL, {cache:'no-store', mode:'cors'});
-    const txt = await res.text();
-    const rows = csvParse(txt).map(mapCalRow);
-    PLAN_ALL = rows; // NO filtramos por cod para filtros/plan
-    PLAN_IDX_BY_COD = new Map(rows.filter(r=>r.cod).map(r=>[r.cod, r]));
-  }
-
-  function ensureSemana14(){
-    const sel = document.getElementById('rrSemana');
-    if(!sel) return;
-    const first = sel.options[0] || (function(){const o=document.createElement('option'); o.value=''; o.textContent='Todas'; sel.appendChild(o); return o;})();
-    sel.innerHTML=''; sel.appendChild(first); first.value=''; first.textContent='Todas';
-    for(let w=1; w<=4; w++){ const o=document.createElement('option'); o.value=String(w); o.textContent=String(w); sel.appendChild(o); }
-  }
-
-  function populateVG(){
-    const selVend = document.getElementById('rrVendedor');
-    const selGest = document.getElementById('rrGestor');
-    function fill(sel, values, placeholder){
-      if(!sel) return;
-      const first = document.createElement('option'); first.value=''; first.textContent=placeholder;
-      sel.innerHTML=''; sel.appendChild(first);
-      [...new Set(values.filter(v=>!!v))].sort((a,b)=>a.localeCompare(b,'es',{numeric:true}))
-        .forEach(v=>{ const o=document.createElement('option'); o.value=v; o.textContent=v; sel.appendChild(o); });
-    }
-    fill(selVend, PLAN_ALL.map(r=>r.vendedor), 'Todos');
-    fill(selGest, PLAN_ALL.map(r=>r.gestor), 'Todos');
-  }
-
-  function getCalls(){
-    let calls = [];
-    try{ calls = JSON.parse(localStorage.getItem('llamadas_records') || '[]'); }catch(_){}
-    if(window.STATE && Array.isArray(STATE.calls)) calls = calls.concat(STATE.calls);
-    return calls;
-  }
-
-  function buildPlanIndex(rows){
-    const map = new Map();
-    for(const r of rows){
-      const k = r.gestor+'||'+r.semana+'||'+normDia(r.dia);
-      const it = map.get(k) || {gestor:r.gestor, semana:r.semana, dia:r.dia, asignados:0};
-      it.asignados += 1;
-      map.set(k, it);
-    }
-    return map;
-  }
-
-  function buildDoneIndex(){
-    const map = new Map();
-    for(const c of getCalls()){
-      const cod = norm(c.cod || c.codigo || c.cod_cliente || c.Cod || '');
-      const plan = PLAN_IDX_BY_COD.get(cod);
-      if(!plan) continue;
-      const k = plan.gestor+'||'+plan.semana+'||'+normDia(plan.dia);
-      const it = map.get(k) || {gestor:plan.gestor, semana:plan.semana, dia:plan.dia, realizadas:0, last:null};
-      it.realizadas += 1;
-      const d = new Date(c.fecha_hora||c.fecha||c.timestamp||'');
-      if(!isNaN(d)) it.last = (!it.last || new Date(it.last) < d) ? d.toISOString() : it.last;
-      map.set(k, it);
-    }
-    return map;
-  }
-
-  function render(){
-    const fSemana = (document.getElementById('rrSemana')||{}).value || '';
-    const fDia = (document.getElementById('rrDia')||{}).value || '';
-    const fVend = (document.getElementById('rrVendedor')||{}).value || '';
-    const fGest = (document.getElementById('rrGestor')||{}).value || '';
-
-    const base = PLAN_ALL.filter(x=>{
-      if(fSemana && String(x.semana)!==String(fSemana)) return false;
-      if(fDia && normDia(x.dia)!==normDia(fDia)) return false;
-      if(fVend && x.vendedor!==fVend) return false;
-      if(fGest && x.gestor!==fGest) return false;
-      return true;
-    });
-
-    const planMap = buildPlanIndex(base);
-    const doneMap = buildDoneIndex();
-    const keys = new Set([...planMap.keys(), ...doneMap.keys()]);
-    const rows = [];
-    for(const k of keys){
-      const p = planMap.get(k) || {gestor:'', semana:'', dia:'', asignados:0};
-      const d = doneMap.get(k) || {realizadas:0, last:null};
-      const asign = p.asignados||0, hechas = d.realizadas||0;
-      const pct = asign ? (hechas/asign*100) : (hechas?100:0);
-      rows.push({gestor:p.gestor||d.gestor||'', semana:p.semana||d.semana||'', dia:p.dia||d.dia||'', asignados:asign, realizadas:hechas, pct, last:d.last});
-    }
-    rows.sort((a,b)=> a.gestor.localeCompare(b.gestor,'es',{numeric:true}) ||
-                     String(a.semana).localeCompare(String(b.semana),'es',{numeric:true}) ||
-                     String(a.dia).localeCompare(String(b.dia),'es',{numeric:true}));
-
-    const tb = document.querySelector('#rrTbl tbody');
-    if(tb){
-      tb.innerHTML = rows.map(r=>'<tr>'
-        +'<td>'+ (r.gestor||'-') +'</td>'
-        +'<td>'+ (r.semana||'-') +'</td>'
-        +'<td>'+ (r.dia||'-') +'</td>'
-        +'<td>'+ r.asignados +'</td>'
-        +'<td>'+ r.realizadas +'</td>'
-        +'<td>'+ r.pct.toFixed(1) +'%' +'</td>'
-        +'<td>'+ (r.last ? new Date(r.last).toLocaleString() : '-') +'</td>'
-      +'</tr>').join('');
-    }
-
-    let asign=0, hechas=0; rows.forEach(r=>{ asign+=r.asignados; hechas+=r.realizadas; });
-    const cov = asign ? (hechas/asign*100) : (hechas?100:0);
-    const a = document.getElementById('kpiAsignadas'); if(a) a.textContent = String(asign);
-    const h = document.getElementById('kpiHechas'); if(h) h.textContent = String(hechas);
-    const c = document.getElementById('kpiCobertura'); if(c) c.textContent = cov.toFixed(1)+'%';
-  }
-
-  async function boot(){
-    if(BOOTED) return; BOOTED = true;
-    ensureSemana14();
-    try { await loadCalendario(); } catch(e){ console.warn(e); }
-    populateVG();
-    ['rrSemana','rrDia','rrVendedor','rrGestor'].forEach(id=>{
-      const el = document.getElementById(id);
-      if(el && !el.__rrBound){ el.addEventListener('change', render); el.__rrBound=true; }
-    });
-    render();
-  }
-
-  // Ensure button opens the screen and boots, stopping other listeners.
-  document.addEventListener('click', function(ev){
-    const t = ev.target;
-    if(t && t.id === BTN_ID){
-      ev.preventDefault(); ev.stopPropagation();
-      if(typeof window.__showResumenScreen==='function'){ window.__showResumenScreen(); }
-      setTimeout(boot, 0);
-    }
-  }, true);
-
-  // Also boot on DOMContentLoaded to be safe if user loads directly
-  document.addEventListener('DOMContentLoaded', function(){ setTimeout(boot,0); });
-})();
-</script>
-
-
-<script>
-(function(){
-  const CAL_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vSGjr-XdLSamHpGQfoORmLfntJbLd-UbFpD7NdMM14x2JdMhxOYHTWQBlhYCMDu0ZTy3AYS-1Y3q91Y/pub?gid=223681507&single=true&output=csv";
-  let PLAN = []; // {gestor, vendedor, semana, dia, cod?}
-  let DEBUG_ON = true;
-
-  function ensureDebug(){
-    if(!DEBUG_ON) return;
-    if(document.getElementById('rrDebug')) return;
-    const k = document.createElement('div');
-    k.id = 'rrDebug';
-    k.style.cssText = 'margin-top:6px;font-size:12px;opacity:.7';
-    const parent = document.querySelector('#screenResumen .card') || document.getElementById('screenResumen') || document.body;
-    parent.insertBefore(k, parent.children[1] || null);
-  }
-  function setDebug(msg){
-    if(!DEBUG_ON) return;
-    ensureDebug();
-    const k = document.getElementById('rrDebug');
-    if(k) k.textContent = msg;
-  }
-
-  function csvParse(text){
-    const rows = [];
-    let row = [], cur = '', q=false;
-    for(let i=0;i<text.length;i++){
-      const ch = text[i];
-      if(ch === '"'){
-        if(q && text[i+1] === '"'){ cur+='"'; i++; }
-        else q = !q;
-      } else if(ch === ',' && !q){
-        row.push(cur); cur='';
-      } else if((ch === '\n' || ch === '\r') && !q){
-        if(cur.length || row.length){ row.push(cur); rows.push(row); row=[]; cur=''; }
-      } else {
-        cur += ch;
-      }
-    }
-    if(cur.length || row.length){ row.push(cur); rows.push(row); }
-    if(rows.length===0) return [];
-    const header = rows.shift().map(h=>String(h||'').trim());
-    return rows.filter(r=>r.some(x=>String(x||'').trim()!=='')).map(r=>{
-      const o={};
-      for(let j=0;j<header.length;j++){ o[header[j]] = r[j]!==undefined ? r[j] : ''; }
-      return o;
-    });
-  }
-
-  function pick(o, names){
-    const keys = Object.keys(o);
-    for(const n of names){
-      if(n in o && o[n]!=null && o[n]!=='') return o[n];
-      const f = keys.find(k=>k.toLowerCase()===n.toLowerCase());
-      if(f) return o[f];
-    }
-    return '';
-  }
-  function norm(s){ return String(s||'').trim(); }
-  function normDia(d){ return String(d||'').normalize('NFD').replace(/\p{Diacritic}/gu,'').toLowerCase(); }
-
-  function mapCalRow(x){
-    return {
-      gestor: norm(pick(x,['gestor_servicio','Gestor','gestor','Gestor cartera'])) || 'NO ASIGNADO',
-      vendedor: norm(pick(x,['vendedor','Vendedor','VENDEDOR','VENDEDOR(A)'])),
-      semana: norm(pick(x,['SEMANA','Semana','N Semana','semana'])),
-      dia: norm(pick(x,['DIA','Día','Dia','día','dia'])),
-      cod: norm(pick(x,['Cod Empresa','CODIGO','Cod','Código','Codigo','cod','ID']))
-    };
-  }
-
-  async function loadPlan(){
-    setDebug('Cargando calendario...');
-    const res = await fetch(CAL_URL, {cache:'no-store'});
-    const txt = await res.text();
-    const rows = csvParse(txt).map(mapCalRow).filter(r=>r.semana && r.dia);
-    PLAN = rows;
-    setDebug(`Calendario cargado: ${PLAN.length} filas · cols detectadas: vendedor/gestor/semana/dia/cod`);
-  }
-
-  function ensureSemana14(){
-    const sel = document.getElementById('rrSemana');
-    if(!sel) return;
-    sel.innerHTML = '';
-    const first = document.createElement('option'); first.value=''; first.textContent='Todas'; sel.appendChild(first);
-    for(let w=1; w<=4; w++){ const o=document.createElement('option'); o.value=String(w); o.textContent=String(w); sel.appendChild(o); }
-  }
-
-  function populateFilters(){
-    const selVend = document.getElementById('rrVendedor');
-    const selGest = document.getElementById('rrGestor');
-    const unique = (arr)=>[...new Set(arr.filter(Boolean))].sort((a,b)=>a.localeCompare(b,'es',{numeric:true}));
-    const vend = unique(PLAN.map(r=>r.vendedor));
-    const gest = unique(PLAN.map(r=>r.gestor));
-    function fill(sel, arr, placeholder){
-      if(!sel) return;
-      sel.innerHTML = '';
-      const first = document.createElement('option'); first.value=''; first.textContent=placeholder; sel.appendChild(first);
-      arr.forEach(v=>{ const o=document.createElement('option'); o.value=v; o.textContent=v; sel.appendChild(o); });
-    }
-    fill(selVend, vend, 'Todos');
-    fill(selGest, gest, 'Todos');
-    setDebug(`Filtros: vendedores ${vend.length} · gestores ${gest.length}`);
-  }
-
-  function getCalls(){
-    let calls = [];
-    try{ calls = JSON.parse(localStorage.getItem('llamadas_records') || '[]'); }catch(_){}
-    if(window.STATE && Array.isArray(STATE.calls)) calls = calls.concat(STATE.calls);
-    return calls;
-  }
-
   function renderResumen(){
-    const fSemana = (document.getElementById('rrSemana')||{}).value || '';
-    const fDia = (document.getElementById('rrDia')||{}).value || '';
-    const fVend = (document.getElementById('rrVendedor')||{}).value || '';
-    const fGest = (document.getElementById('rrGestor')||{}).value || '';
-
-    const base = PLAN.filter(x=>{
+    const fSemana = $('#rsSemana').value || ''; const fDia = $('#rsDia').value || '';
+    const fVend = $('#rsVendedor').value || ''; const fGest = $('#rsGestor').value || '';
+    const plan = parsePlan().filter(x=>{
       if(fSemana && String(x.semana)!==String(fSemana)) return false;
       if(fDia && normDia(x.dia)!==normDia(fDia)) return false;
       if(fVend && x.vendedor!==fVend) return false;
       if(fGest && x.gestor!==fGest) return false;
       return true;
     });
-
-    // A realizar (plan) por gestor/semana/dia
+    const calls = parseCalls().filter(x=>{
+      if(fSemana && String(x.semana)!==String(fSemana)) return false;
+      if(fDia && normDia(x.dia)!==normDia(fDia)) return false;
+      if(fVend && x.vendedor!==fVend) return false;
+      if(fGest && x.gestor!==fGest) return false;
+      return true;
+    });
+    // Agrupar plan por gestor-semana-dia
     const planMap = new Map();
-    for(const r of base){
-      const k = r.gestor+'||'+r.semana+'||'+normDia(r.dia);
-      const it = planMap.get(k) || {gestor:r.gestor, semana:r.semana, dia:r.dia, asignados:0};
-      it.asignados += 1;
-      planMap.set(k, it);
-    }
-
-    // Realizadas: agrupar por gestor/día usando fecha_hora de las llamadas
-    const doneMap = new Map();
-    for(const c of getCalls()){
-      const gestor = norm(c.gestor_servicio || c.gestor || '');
-      if(fGest && gestor !== fGest) continue;
-      const d = new Date(c.fecha_hora || c.fecha || c.timestamp || '');
-      if(isNaN(d)) continue;
-      const dia = d.toLocaleDateString('es-ES',{ weekday:'long' });
-      if(fDia && normDia(dia) !== normDia(fDia)) continue;
-      // nota: no hay semana de la llamada; se acumula contra todas las semanas filtradas del plan
-      const key = gestor+'||'+(fSemana||'')+'||'+normDia(dia);
-      const it = doneMap.get(key) || {gestor, semana:(fSemana||''), dia, realizadas:0, last:null};
-      it.realizadas += 1;
-      it.last = (!it.last || new Date(it.last) < d) ? d.toISOString() : it.last;
-      doneMap.set(key, it);
-    }
-
-    // Combinar claves del plan con realizadas (si hay semana seleccionada, las realizadas caen en esa semana; si no, en '')
+    plan.forEach(p=>{
+      const k = p.gestor+'|'+p.semana+'|'+normDia(p.dia);
+      planMap.set(k, (planMap.get(k)||0)+1);
+    });
+    // Agrupar realizadas (gestor-semana-dia por fecha de llamada)
+    const doneMap = new Map(), lastMap = new Map();
+    calls.forEach(c=>{
+      const k = c.gestor+'|'+c.semana+'|'+normDia(c.dia);
+      doneMap.set(k, (doneMap.get(k)||0)+1);
+      const prev = lastMap.get(k); if(!prev || prev < c.fecha) lastMap.set(k, c.fecha);
+    });
+    // Unir claves
     const keys = new Set([...planMap.keys(), ...doneMap.keys()]);
     const rows = [];
-    for(const k of keys){
-      const p = planMap.get(k) || {gestor:k.split('||')[0], semana:k.split('||')[1], dia:k.split('||')[2], asignados:0};
-      // Si no existe conteo de realizadas para esa clave exacta, intentar por (gestor + dia) sin semana
-      let d = doneMap.get(k);
-      if(!d){
-        const alt = p.gestor+'||'+''+'||'+normDia(p.dia||'');
-        d = doneMap.get(alt) || {realizadas:0, last:null};
-      }
-      const asign = p.asignados||0, hechas = d.realizadas||0;
-      const pct = asign ? (hechas/asign*100) : (hechas?100:0);
-      rows.push({gestor:p.gestor||'-', semana:p.semana||'-', dia:p.dia||'-', asignados:asign, realizadas:hechas, pct, last:d.last});
-    }
-    rows.sort((a,b)=> a.gestor.localeCompare(b.gestor,'es',{numeric:true}) ||
-                     String(a.semana).localeCompare(String(b.semana),'es',{numeric:true}) ||
-                     String(a.dia).localeCompare(String(b.dia),'es',{numeric:true}));
-
-    const tb = document.querySelector('#rrTbl tbody');
-    if(tb){
-      tb.innerHTML = rows.map(r=>'<tr>'
-        +'<td>'+ r.gestor +'</td>'
-        +'<td>'+ r.semana +'</td>'
-        +'<td>'+ r.dia +'</td>'
-        +'<td>'+ r.asignados +'</td>'
-        +'<td>'+ r.realizadas +'</td>'
-        +'<td>'+ r.pct.toFixed(1) +'%' +'</td>'
-        +'<td>'+ (r.last ? new Date(r.last).toLocaleString() : '-') +'</td>'
-      +'</tr>').join('');
-    }
-
-    let asign=0, hechas=0; rows.forEach(r=>{ asign+=r.asignados; hechas+=r.realizadas; });
-    const cov = asign ? (hechas/asign*100) : (hechas?100:0);
-    const a = document.getElementById('kpiAsignadas'); if(a) a.textContent = String(asign);
-    const h = document.getElementById('kpiHechas'); if(h) h.textContent = String(hechas);
-    const c = document.getElementById('kpiCobertura'); if(c) c.textContent = cov.toFixed(1)+'%';
-    setDebug(`Plan filtrado: ${base.length} filas · Grupos: ${rows.length}`);
+    keys.forEach(k=>{
+      const [gestor, semana, dia] = k.split('|');
+      const planCount = planMap.get(k)||0;
+      const doneCount = doneMap.get(k)||0;
+      const pct = planCount ? (doneCount/planCount*100) : (doneCount?100:0);
+      const last = lastMap.get(k) ? lastMap.get(k).toLocaleString() : '-';
+      rows.push({gestor, semana, dia, planCount, doneCount, pct, last});
+    });
+    rows.sort((a,b)=> a.gestor.localeCompare(b.gestor,'es',{numeric:true}) || String(a.semana).localeCompare(String(b.semana),'es',{numeric:true}) || String(a.dia).localeCompare(String(b.dia),'es',{numeric:true}));
+    const tb = $('#rsTbl tbody'); tb.innerHTML = rows.map(r=>`<tr>
+      <td>${r.gestor||'-'}</td><td>${r.semana||'-'}</td><td>${r.dia||'-'}</td>
+      <td>${r.planCount}</td><td>${r.doneCount}</td><td>${r.pct.toFixed(1)}%</td><td>${r.last}</td>
+    </tr>`).join('');
+    // KPIs
+    const totalPlan = rows.reduce((a,b)=>a+b.planCount,0);
+    const totalDone = rows.reduce((a,b)=>a+b.doneCount,0);
+    const cov = totalPlan ? (totalDone/totalPlan*100) : (totalDone?100:0);
+    $('#rsKpiPlan').textContent = String(totalPlan);
+    $('#rsKpiDone').textContent = String(totalDone);
+    $('#rsKpiCov').textContent = cov.toFixed(1)+'%';
+    $('#rsDebug').textContent = `Plan: ${plan.length} filas · Llamadas: ${calls.length}`;
   }
-
-  async function bootResumen(){
-    try{
-      ensureDebug();
-      ensureSemana14();
-      if(!PLAN.length){ await loadPlan(); }
-      populateFilters();
-      ['rrSemana','rrDia','rrVendedor','rrGestor'].forEach(id=>{
-        const el = document.getElementById(id);
-        if(el && !el.__rrBound){ el.addEventListener('change', renderResumen); el.__rrBound=true; }
-      });
-      renderResumen();
-    }catch(e){
-      setDebug('Error en resumen: '+ (e && e.message ? e.message : e));
-    }
+  function exportResumen(){
+    const rows = $all('#rsTbl tbody tr').map(tr=> Array.from(tr.cells).map(td=> td.textContent) );
+    const headers = Array.from($('#rsTbl thead tr').cells).map(th=>th.textContent);
+    const csv = [headers.map(csvEscape).join(',')].concat(rows.map(r=> r.map(csvEscape).join(','))).join('\n');
+    const blob = new Blob([csv],{type:'text/csv;charset=utf-8;'});
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'reporte_resumen.csv'; a.click(); URL.revokeObjectURL(a.href);
   }
-
-  // Ejecutar cuando se muestre el reporte
+  // Buttons
   document.addEventListener('click', (ev)=>{
-    const t = ev.target;
-    if(!t) return;
-    if(t.id==='btnRepResumen' || t.id==='btnReporteResumen'){
-      setTimeout(bootResumen, 0);
-    }
+    if(ev.target && ev.target.id==='btnReporteResumen'){ ev.stopPropagation(); ev.preventDefault(); setTimeout(openResumen, 50); }
+    if(ev.target && ev.target.id==='btnRsCerrar'){ closeResumen(); }
   });
-  // Por si ya está en la pantalla
-  document.addEventListener('DOMContentLoaded', ()=>{
-    if(document.getElementById('screenResumen') && document.getElementById('screenResumen').style.display!=='none'){
-      setTimeout(bootResumen, 0);
-    }
+  document.addEventListener('change', (ev)=>{
+    if(ev.target && ['rsSemana','rsDia','rsVendedor','rsGestor'].includes(ev.target.id)){ renderResumen(); }
   });
+  $('#rsExport') && $('#rsExport').addEventListener('click', exportResumen);
 })();
 </script>
 
