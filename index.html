@@ -444,6 +444,9 @@ details > summary{
   </div>
 
   
+  <button id="btnOpenResumenSem" class="btn" style="margin-left:8px;">📊 Resumen (Sem)</button>
+
+  
   <!-- === Pantalla: Reporte de Llamadas — Resumen (Semanal) === -->
   <section id="screenResumenSem" style="display:none;">
     <div class="card" style="margin:12px auto; width:min(1180px,96vw);">
@@ -2017,119 +2020,18 @@ document.addEventListener('click', (ev)=>{
 
 <script>
 (function(){
+  // === Config ===
   const CAL_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vSGjr-XdLSamHpGQfoORmLfntJbLd-UbFpD7NdMM14x2JdMhxOYHTWQBlhYCMDu0ZTy3AYS-1Y3q91Y/pub?gid=223681507&single=true&output=csv";
+
+  // === Helpers ===
   function $(sel, root){ return (root||document).querySelector(sel); }
   function $all(sel, root){ return Array.from((root||document).querySelectorAll(sel)); }
   function norm(s){ return String(s||'').trim(); }
-  function weekOfMonth(date){ if(!(date instanceof Date)||isNaN(date)) return ''; const w = 1 + Math.floor((date.getDate()-1)/7); return String(Math.min(Math.max(w,1),4)); }
+  function normDia(d){ return String(d||'').normalize('NFD').replace(/\p{Diacritic}/gu,'').toLowerCase(); }
   function csvEscape(v){ if(v==null) return ''; const s=String(v); return (s.includes(',')||s.includes('"')||s.includes('\n'))?('"'+s.replace(/"/g,'""')+'"'):s; }
+  function weekOfMonth(date){ if(!(date instanceof Date)||isNaN(date)) return ''; const w = 1 + Math.floor((date.getDate()-1)/7); return String(Math.min(Math.max(w,1),4)); }
 
-  // ---------- A) Registrar llamada: campo Semana ----------
-  function ensureSemanaInCallModal(){
-    const modal = $('#modalLlamada'); if(!modal) return;
-    if($('#llSemana', modal)) return;
-    // Try to place after "Fecha y hora"
-    let anchor = null;
-    $all('label', modal).forEach(l=>{
-      const t = (l.textContent||'').trim().toLowerCase();
-      if(!anchor && (t.includes('fecha y hora') || t==='fecha y hora')) anchor = l;
-    });
-    const box = document.createElement('div');
-    box.innerHTML = '<label>Semana (1–4)</label><select id="llSemana" class="input"><option value="">(auto)</option><option>1</option><option>2</option><option>3</option><option>4</option></select>';
-    if(anchor && anchor.parentElement) anchor.parentElement.insertAdjacentElement('afterend', box);
-    else (modal.querySelector('.grid')||modal).appendChild(box);
-  }
-  function presetSemanaCall(){
-    const modal = $('#modalLlamada'); if(!modal) return;
-    const fh = modal.querySelector('input[type="datetime-local"], input[id*="fecha"], input[name*="fecha"]');
-    const sel = $('#llSemana', modal); if(!sel) return;
-    let d = new Date();
-    if(fh && fh.value){ const t = fh.value; d = new Date(t); if(isNaN(d)) d = new Date(); }
-    sel.value = weekOfMonth(d);
-  }
-  function stampSemanaOnLastCall(){
-    try{
-      const arr = JSON.parse(localStorage.getItem('llamadas_records') || '[]');
-      if(Array.isArray(arr) && arr.length){
-        const last = arr[arr.length-1];
-        if(!last.semana){
-          const d = new Date(last.fecha_hora || last.fecha || Date.now());
-          const sel = $('#llSemana'); last.semana = sel && sel.value ? sel.value : weekOfMonth(d);
-          localStorage.setItem('llamadas_records', JSON.stringify(arr));
-        }
-      }
-    }catch(_){}
-  }
-  document.addEventListener('click', (ev)=>{
-    if(ev.target && (ev.target.id==='btnRegistrar' || ev.target.matches('[data-open="modalLlamada"]'))){
-      setTimeout(()=>{ ensureSemanaInCallModal(); presetSemanaCall(); }, 80);
-    }
-    if(ev.target && (ev.target.id==='btnCallGuardar' || /guardar/i.test(ev.target.textContent||'')) && ev.target.closest('#modalLlamada')){
-      setTimeout(stampSemanaOnLastCall, 300);
-    }
-  });
-
-  // ---------- B) Reporte de llamadas (DETALLE): columna y filtro Semana ----------
-  function ensureSemanaFilterInReport(){
-    const modal = $('#modalReporte'); if(!modal) return;
-    if($('#repSemana', modal)) return;
-    const grid = modal.querySelector('.grid') || modal;
-    const holder = document.createElement('div');
-    holder.innerHTML = '<label>Semana</label><select id="repSemana" class="input"><option value="">(todas)</option><option>1</option><option>2</option><option>3</option><option>4</option></select>';
-    grid.appendChild(holder);
-  }
-  function computeWeekFromRow(tr){
-    // Date is in first column text
-    const td = tr.cells[0]; if(!td) return '';
-    const txt = td.textContent.trim();
-    // Try parse robustly
-    let d = new Date(txt);
-    if(isNaN(d)){
-      // Extract yyyy-mm-dd or dd/mm/yyyy
-      const m = txt.match(/(\d{4}-\d{2}-\d{2})|(\d{2}\/\d{2}\/\d{4})/);
-      if(m){ d = new Date(m[0]); }
-    }
-    if(isNaN(d)) return '';
-    return weekOfMonth(d);
-  }
-  function patchReportTable(){
-    const modal = $('#modalReporte'); if(!modal) return;
-    const tbl = modal.querySelector('table'); if(!tbl || !tbl.tHead) return;
-    const heads = Array.from(tbl.tHead.rows[0].cells).map(c=>c.textContent.trim().toLowerCase());
-    if(!heads.includes('semana')){
-      const th = document.createElement('th'); th.textContent = 'Semana';
-      const trh = tbl.tHead.rows[0];
-      trh.insertBefore(th, trh.cells[1] || null);
-      $all('tbody tr', tbl).forEach(tr=>{
-        const cell = document.createElement('td'); cell.textContent = computeWeekFromRow(tr) || '-';
-        tr.insertBefore(cell, tr.cells[1] || null);
-      });
-    }else{
-      $all('tbody tr', tbl).forEach(tr=>{
-        const idx = 1; if(tr.cells[idx]) tr.cells[idx].textContent = computeWeekFromRow(tr) || '-';
-      });
-    }
-  }
-  function applyWeekFilterToReport(){
-    const modal = $('#modalReporte'); if(!modal) return;
-    const tbl = modal.querySelector('table'); const sel = $('#repSemana', modal);
-    if(!tbl || !sel) return;
-    const wk = sel.value;
-    $all('tbody tr', tbl).forEach(tr=>{
-      const w = computeWeekFromRow(tr);
-      tr.style.display = (!wk || wk===w) ? '' : 'none';
-    });
-  }
-  document.addEventListener('click', (ev)=>{
-    if(ev.target && (ev.target.id==='btnReporte' || ev.target.matches('[data-open="modalReporte"]'))){
-      setTimeout(()=>{ ensureSemanaFilterInReport(); patchReportTable(); applyWeekFilterToReport(); }, 200);
-    }
-  });
-  document.addEventListener('change', (ev)=>{
-    if(ev.target && ev.target.id==='repSemana'){ applyWeekFilterToReport(); }
-  });
-
-  // ---------- C) Resumen (en la misma página) ----------
+  // CSV minimal parser
   function parseCSV(text){
     const rows=[]; let row=[], cur='', q=false;
     for(let i=0;i<text.length;i++){
@@ -2141,8 +2043,10 @@ document.addEventListener('click', (ev)=>{
     }
     if(cur.length||row.length){ row.push(cur); rows.push(row); }
     if(!rows.length) return [];
-    const head=rows.shift().map(h=>String(h||'').trim());
-    return rows.filter(r=>r.some(x=>String(x||'').trim()!=='')).map(r=>{ const o={}; for(let j=0;j<head.length;j++){ o[head[j]]=r[j]!==undefined?r[j]:''; } return o; });
+    const head = rows.shift().map(h=>String(h||'').trim());
+    return rows.filter(r=>r.some(x=>String(x||'').trim()!=='')).map(r=>{
+      const o={}; for(let j=0;j<head.length;j++){ o[head[j]]= r[j]!==undefined ? r[j] : ''; } return o;
+    });
   }
   function pick(o, names){
     const ks = Object.keys(o);
@@ -2153,7 +2057,9 @@ document.addEventListener('click', (ev)=>{
     }
     return '';
   }
-  let PLAN = [];
+
+  // Load Calendario plan
+  let PLAN = []; // {gestor, vendedor, semana, cod?}
   async function loadPlan(){
     try{
       const res = await fetch(CAL_URL, {cache:'no-store', mode:'cors'});
@@ -2162,12 +2068,19 @@ document.addEventListener('click', (ev)=>{
       PLAN = rows.map(r=> ({
         gestor: norm(pick(r, ['gestor_servicio','Gestor','gestor'])) || 'NO ASIGNADO',
         vendedor: norm(pick(r, ['vendedor','Vendedor','VENDEDOR'])),
-        semana: norm(pick(r, ['SEMANA','Semana','semana']))
+        semana: norm(pick(r, ['SEMANA','Semana','semana'])),
+        cod: norm(pick(r, ['Cod Empresa','Cod','Código','Codigo','cod','ID']))
       })).filter(x=>x.semana);
-    }catch(e){ PLAN=[]; }
+    }catch(e){
+      console.warn('No se pudo cargar Calendario', e);
+      PLAN = [];
+    }
   }
+
+  // Calls
   function getCalls(){
-    let calls=[]; try{ calls=JSON.parse(localStorage.getItem('llamadas_records')||'[]'); }catch(_){}
+    let calls = [];
+    try{ calls = JSON.parse(localStorage.getItem('llamadas_records') || '[]'); }catch(_){}
     if(window.STATE && Array.isArray(STATE.calls)) calls = calls.concat(STATE.calls);
     return calls.map(c=>{
       const d = new Date(c.fecha_hora || c.fecha || '');
@@ -2179,14 +2092,19 @@ document.addEventListener('click', (ev)=>{
       };
     });
   }
+
+  // Populate filters
   function uniq(arr){ return Array.from(new Set(arr.filter(Boolean))).sort((a,b)=>String(a).localeCompare(String(b),'es',{numeric:true})); }
-  function populateResumenFilters(){
+  function populateFilters(){
     const vend = uniq(PLAN.map(p=>p.vendedor));
     const gest = uniq(PLAN.map(p=>p.gestor));
-    $('#rwVendedor').innerHTML = '<option value="">Todos</option>' + vend.map(v=>'<option>'+v+'</option>').join('');
-    $('#rwGestor').innerHTML    = '<option value="">Todos</option>' + gest.map(v=>'<option>'+v+'</option>').join('');
+    const fvend = $('#rwVendedor'); const fgest = $('#rwGestor');
+    fvend.innerHTML = '<option value="">Todos</option>' + vend.map(v=>'<option>'+v+'</option>').join('');
+    fgest.innerHTML = '<option value="">Todos</option>' + gest.map(v=>'<option>'+v+'</option>').join('');
   }
-  function renderResumen(){
+
+  // Render table (aggregate by semana y gestor; NO por día)
+  function render(){
     const fSem = $('#rwSemana').value || '';
     const fVend = $('#rwVendedor').value || '';
     const fGest = $('#rwGestor').value || '';
@@ -2197,12 +2115,15 @@ document.addEventListener('click', (ev)=>{
       if(fGest && x.gestor!==fGest) return false;
       return true;
     });
-    const planMap = new Map();
+
+    // Agrupar Plan por (gestor, semana)
+    const planMap = new Map(); // key: gestor|semana => count
     planF.forEach(p=>{
       const k = p.gestor+'|'+p.semana;
       planMap.set(k, (planMap.get(k)||0)+1);
     });
 
+    // Realizadas: agrupar por (gestor, semana)
     const calls = getCalls().filter(c=>{
       if(fSem && String(c.semana)!==String(fSem)) return false;
       if(fVend && c.vendedor!==fVend) return false;
@@ -2211,9 +2132,10 @@ document.addEventListener('click', (ev)=>{
     });
     const doneMap = new Map(); const lastMap = new Map();
     calls.forEach(c=>{
-      const k = c.gestor+'|'+c.semana;
+      const k = c.gestor+'|'+(c.semana||'');
       doneMap.set(k, (doneMap.get(k)||0)+1);
-      const prev = lastMap.get(k); if(!prev || prev < c.fecha) lastMap.set(k, c.fecha);
+      const prev = lastMap.get(k);
+      if(!prev || prev < c.fecha) lastMap.set(k, c.fecha);
     });
 
     const keys = new Set([...planMap.keys(), ...doneMap.keys()]);
@@ -2227,11 +2149,12 @@ document.addEventListener('click', (ev)=>{
       rows.push({gestor, semana, a, r, pct, last});
     });
     rows.sort((x,y)=> x.gestor.localeCompare(y.gestor,'es',{numeric:true}) || String(x.semana).localeCompare(String(y.semana),'es',{numeric:true}));
+
     const tb = $('#rwTbl tbody'); tb.innerHTML='';
     const frag = document.createDocumentFragment();
     rows.forEach(row=>{
       const tr = document.createElement('tr');
-      function td(t){ const el=document.createElement('td'); el.textContent=t; return el; }
+      function td(t){ const el=document.createElement('td'); el.textContent = t; return el; }
       tr.appendChild(td(row.gestor||'-'));
       tr.appendChild(td(row.semana||'-'));
       tr.appendChild(td(row.a));
@@ -2252,7 +2175,8 @@ document.addEventListener('click', (ev)=>{
     $('#rwInfo').textContent = `Plan: ${planF.length} filas · Llamadas: ${calls.length}`;
   }
 
-  function exportResumenCSV(){
+  // Export CSV
+  function exportCSV(){
     const headers = ['Gestor','Semana','A realizar','Realizadas','% Cobertura','Última llamada'];
     const rows = $all('#rwTbl tbody tr').map(tr=> Array.from(tr.cells).map(td=> td.textContent));
     const csv = [headers.map(csvEscape).join(',')].concat(rows.map(r=> r.map(csvEscape).join(','))).join('\n');
@@ -2260,28 +2184,31 @@ document.addEventListener('click', (ev)=>{
     const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'reporte_resumen_semanal.csv'; a.click(); URL.revokeObjectURL(a.href);
   }
 
-  // Toggle screen
+  // Screen toggle
   function showResumen(){
-    const main = $('#container') || $('main') || document.body;
+    const main = $('#container, #app, main') || document.body;
     const scr = $('#screenResumenSem');
     if(main && scr){ main.style.display='none'; scr.style.display='block'; }
   }
-  function backResumen(){
-    const main = $('#container') || $('main') || document.body;
+  function backFromResumen(){
+    const main = $('#container, #app, main') || document.body;
     const scr = $('#screenResumenSem');
-    if(main && scr){ scr.style.display='block'; scr.style.display='none'; main.style.display='block'; }
+    if(main && scr){ scr.style.display='none'; main.style.display='block'; }
   }
 
+  // Bindings
   document.addEventListener('click', (ev)=>{
     if(ev.target && ev.target.id==='btnOpenResumenSem'){
       ev.preventDefault(); ev.stopPropagation();
-      (async ()=>{ await loadPlan(); populateResumenFilters(); renderResumen(); showResumen(); })();
+      (async ()=>{
+        await loadPlan(); populateFilters(); render(); showResumen();
+      })();
     }
-    if(ev.target && ev.target.id==='rwVolver'){ backResumen(); }
-    if(ev.target && ev.target.id==='rwExport'){ exportResumenCSV(); }
+    if(ev.target && ev.target.id==='rwVolver'){ backFromResumen(); }
+    if(ev.target && ev.target.id==='rwExport'){ exportCSV(); }
   });
   document.addEventListener('change', (ev)=>{
-    if(ev.target && ['rwSemana','rwVendedor','rwGestor'].includes(ev.target.id)){ renderResumen(); }
+    if(ev.target && ['rwSemana','rwVendedor','rwGestor'].includes(ev.target.id)){ render(); }
   });
 })();
 </script>
