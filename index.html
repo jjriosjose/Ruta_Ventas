@@ -1435,7 +1435,7 @@ function guardarNuevoCliente() {
 // ===== Resumen de llamadas (A realizar vs Realizadas) =====
 
 // Normalización de día
-const __DIAS_OK = ['lunes','martes','miercoles','miércoles','jueves','viernes','sabado','sábado','domingo'];
+const __DIAS_OK = ['lunes','martes','miercoles','jueves','viernes','sábado','domingo'];
 function __normDia(d){
   const s = (String(d||'').normalize('NFD').replace(/\p{Diacritic}/gu,'').toLowerCase());
   return __DIAS_OK.includes(s) ? s : String(d||'').toLowerCase();
@@ -1731,7 +1731,7 @@ document.addEventListener('click', (ev)=>{
   }
 
   // Normalización de día (mismo helper que el modal)
-  const RR_DIAS_OK = ['lunes','martes','miercoles','miércoles','jueves','viernes','sabado','sábado','domingo'];
+  const RR_DIAS_OK = ['lunes','martes','miercoles','jueves','viernes','sábado','domingo'];
   function rrNormDia(d){
     const s = (String(d||'').normalize('NFD').replace(/\p{Diacritic}/gu,'').toLowerCase());
     return RR_DIAS_OK.includes(s) ? s : String(d||'').toLowerCase();
