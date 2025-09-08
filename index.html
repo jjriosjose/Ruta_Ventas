@@ -2899,6 +2899,37 @@ document.addEventListener('click', (ev)=>{
   }
 
   function renderResumen(){
+    function mapPlanWeek(w){
+      // Si la semana ya es 1..4, usarla tal cual. Si viene como 5+ (p.ej. 32), mapear a 1..4.
+      const n = Number(String(w||"").replace(/[^0-9]/g,""));
+      if(Number.isFinite(n) && n>=1){ return n<=4 ? String(n) : String(((n-1)%4)+1); }
+      // Casos "Por asignar" u otros: quedarán en blanco y luego se completan como 1..4 por defecto
+      return "";
+    }
+    function ensureFourWeeks(groups){
+      // Construye filas faltantes (semanas 1..4) para cada gestor detectado en plan o done
+      const gestores = new Set();
+      groups.forEach(g=>gestores.add(g.gestor||""));
+      const arr = Array.from(groups.values ? groups.values() : groups);
+      arr.forEach(g=>gestores.add(g.gestor||""));
+      const out = new Map();
+      const key = (ges,sem)=> (ges||"")+"__"+String(sem);
+      gestores.forEach(ges=>{
+        [1,2,3,4].forEach(sem=>{
+          const k = key(ges, sem);
+          if(!out.has(k)) out.set(k,{gestor:ges||"", semana:String(sem), plan:0, done:0, last:null});
+        });
+      });
+      // Mezclar lo que ya tenemos sobre esta base 1..4
+      (groups instanceof Map ? Array.from(groups.values()) : groups).forEach(g=>{
+        const k = key(g.gestor||"", g.semana);
+        if(!out.has(k)) out.set(k,{gestor:g.gestor||"", semana:String(g.semana||""), plan:0, done:0, last:null});
+        const tgt = out.get(k);
+        tgt.plan += g.plan||0; tgt.done += g.done||0; if(g.last && (!tgt.last || g.last>tgt.last)) tgt.last=g.last;
+      });
+      return out;
+    }
+
 
     function renderBreakdown(groups){
       const host=document.getElementById("rwBreakdown");
@@ -2976,14 +3007,14 @@ document.addEventListener('click', (ev)=>{
           const tds = tr.children;
           return {
             gestor: (tds[5]&&tds[5].textContent.trim())||"",
-            semana: (tds[2]&&tds[2].textContent.trim())||"",
+            semana: mapPlanWeek((tds[2]&&tds[2].textContent.trim())||""),
           };
         });
       }
     }
 
     planRows.forEach(x=>{
-      const g = aggSet(x.gestor, x.semana);
+      const g = aggSet(x.gestor, mapPlanWeek(x.semana));
       g.plan += 1;
     });
 
@@ -2996,7 +3027,8 @@ document.addEventListener('click', (ev)=>{
       if(d && (!g.last || d>g.last)) g.last = d;
     });
 
-    const rows = Array.from(groups.values()).sort((a,b)=>{
+    const full = ensureFourWeeks(groups);
+    const rows = Array.from(full.values()).sort((a,b)=>{
       if(a.gestor === b.gestor){
         const na=Number(a.semana), nb=Number(b.semana);
         return (isFinite(na)&&isFinite(nb)) ? na-nb : String(a.semana).localeCompare(String(b.semana));
@@ -3011,10 +3043,13 @@ document.addEventListener('click', (ev)=>{
     const rwDone = document.getElementById('rwDone');
     const rwCov  = document.getElementById('rwCov');
     if(rwPlan) rwPlan.textContent = String(totalPlan);
+    var k1=document.getElementById('kpiPlan'); if(k1) k1.textContent=String(totalPlan);
     const kpiPlan=document.getElementById('kpiPlan'); if(kpiPlan) kpiPlan.textContent=String(totalPlan);
     if(rwDone) rwDone.textContent = String(totalDone);
+    var k2=document.getElementById('kpiDone'); if(k2) k2.textContent=String(totalDone);
     const kpiDone=document.getElementById('kpiDone'); if(kpiDone) kpiDone.textContent=String(totalDone);
     if(rwCov)  rwCov.textContent  = cov + '%';
+    var k3=document.getElementById('kpiCov'); if(k3) k3.textContent=cov + '%';
     const kpiCov=document.getElementById('kpiCov'); if(kpiCov) kpiCov.textContent = cov + '%';
 
     renderBreakdown(rows);
