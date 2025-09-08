@@ -3785,6 +3785,7 @@ document.addEventListener('click', (ev)=>{
 </script>
 
 <script>
+
 // === Resumen (Sem) Controller — SAFE (no eliminación de botones) ===
 
 // Utilidad: formateo y %
@@ -3793,9 +3794,10 @@ function pct(num, den){
   if(d<=0) return '0%';
   return Math.round(n*100/d) + '%';
 }
+function sum(arr, f){ return arr.reduce((a,b)=>a+(f?f(b):b),0); }
+function normStr(s){ return (s??'').toString().trim(); }
 
 function ensureResumenFilters(){
-  // Llenar opciones de Vendedor/Gestor con datos vivos
   try{
     const vendSel = document.getElementById('rwVendedor');
     const gestSel = document.getElementById('rwGestor');
@@ -3806,11 +3808,11 @@ function ensureResumenFilters(){
 
     const mkOpts = (arr, allLabel) => ['<option value="">'+allLabel+'</option>'].concat(arr.map(v=>'<option>'+String(v)+'</option>')).join('');
 
-    if(vendSel.dataset.filled!=='1'){
+    if(vendSel && vendSel.dataset.filled!=='1'){
       vendSel.innerHTML = mkOpts(vendors, 'Todos');
       vendSel.dataset.filled = '1';
     }
-    if(gestSel.dataset.filled!=='1'){
+    if(gestSel && gestSel.dataset.filled!=='1'){
       gestSel.innerHTML = mkOpts(gestors, 'Todos');
       gestSel.dataset.filled = '1';
     }
@@ -3824,125 +3826,185 @@ function resumenFilters(){
   return { semana, vendedor, gestor };
 }
 
-function computeResumenData(){
-  // Requiere STATE.calendario (plan) y llamadas (done)
-  const cal = Array.isArray(STATE?.calendario) ? STATE.calendario : [];
-  const calls = (typeof loadAllCallRecords === 'function') ? loadAllCallRecords() : [];
+// PLAN desde STATE.joined (itinerarios reales)
+function planRows(){
+  if(!Array.isArray(STATE.joined)) return [];
+  return STATE.joined.map(x=> ({
+    gestor: normStr(x.gestor),
+    vendedor: normStr(x.vendedor),
+    semana: normStr(x.semana),
+    cod: normStr(x.cod),
+    cliente: normStr(x.nombre),
+    empresa: normStr(x.empresa),
+  }));
+}
 
-  // Normalizadores
-  const norm = s => (s??'').toString().trim();
-  const getGestCal = r => r['gestor_servicio'] || r['Gestor'] || r['GESTOR_SERVICIO'] || r['gestor'] || '';
-  const getSemCal  = r => r['Semana'] || r['SEMANA'] || r['semana'] || r['N Semana'] || r['N_Semana'] || r['NSemana'] || '';
-  const key = (g,s) => norm(g)+'||'+norm(s);
+// LLAMADAS realizadas (agrupables)
+function callsRows(){
+  const list = (typeof loadAllCallRecords==='function') ? loadAllCallRecords() : [];
+  return list.map(r=>({
+    gestor: normStr(r.gestor_servicio||r.gestor||''),
+    vendedor: normStr(r.vendedor||''),
+    semana: normStr(r.semana||''),
+    cod: normStr(r.cod_empresa||''),
+    cliente: normStr(r.cliente||''),
+    fecha_hora: normStr(r.fecha_hora||''),
+  }));
+}
 
-  // PLAN: contar filas del calendario por Gestor+Semana
-  const planByKey = {};
-  for(const r of cal){
-    const g = getGestCal(r);
-    const s = getSemCal(r);
-    if(!s) continue;
-    const k = key(g,s);
-    planByKey[k] = (planByKey[k]||0) + 1;
-  }
+// Filtros aplicados a colecciones
+function applyResumenFilter(rows){
+  const {semana, vendedor, gestor} = resumenFilters();
+  return rows.filter(r=>{
+    if(semana && String(r.semana)!==String(semana)) return false;
+    if(vendedor && String(r.vendedor)!==String(vendedor)) return false;
+    if(gestor && String(r.gestor)!==String(gestor)) return false;
+    return true;
+  });
+}
 
-  // DONE: llamadas por Gestor+Semana (usa r.semana de registro)
-  const doneByKey = {};
-  const lastByKey = {};
-  for(const r of calls){
-    const g = r.gestor_servicio || r.gestor || '';
-    const s = r.semana || '';
-    if(!s) continue;
-    const k = key(g,s);
-    doneByKey[k] = (doneByKey[k]||0) + 1;
-    const fh = r.fecha_hora || '';
+// Compute KPI + tablas
+function computeResumen(){
+  const plan = applyResumenFilter(planRows());     // itinerarios
+  const done = applyResumenFilter(callsRows());    // llamadas realizadas
+
+  // KPI totals
+  const planTot = plan.length;
+  const doneTot = done.length;
+  const covTot  = (planTot>0) ? Math.round(doneTot*100/planTot)+'%' : '0%';
+
+  // Tabla por Gestor + Semana (4 semanas)
+  const keyGS = (g,s)=> g+'||'+s;
+  const planByGS = new Map();
+  const doneByGS = new Map();
+  const lastByGS = new Map();
+
+  plan.forEach(p=>{
+    const k = keyGS(p.gestor, p.semana);
+    planByGS.set(k, (planByGS.get(k)||0) + 1);
+  });
+  done.forEach(d=>{
+    const k = keyGS(d.gestor, d.semana);
+    doneByGS.set(k, (doneByGS.get(k)||0) + 1);
+    const fh = d.fecha_hora;
     if(fh){
-      const cur = lastByKey[k];
-      if(!cur || (new Date(fh) > new Date(cur))) lastByKey[k] = fh;
+      const cur = lastByGS.get(k);
+      if(!cur || new Date(fh) > new Date(cur)) lastByGS.set(k, fh);
     }
-  }
+  });
 
-  // Unir keys
-  const keys = new Set([...Object.keys(planByKey), ...Object.keys(doneByKey)]);
-  const rows = [];
-  for(const k of keys){
-    const [g,s] = k.split('||');
-    const plan = planByKey[k]||0;
-    const done = doneByKey[k]||0;
-    rows.push({gestor:g, semana:s, plan, done, cov: pct(done, plan), last:lastByKey[k]||''});
-  }
-  return rows;
+  const keys = new Set([...planByGS.keys(), ...doneByGS.keys()]);
+  const resumenRows = Array.from(keys).map(k=>{
+    const [gestor, semana] = k.split('||');
+    const a = planByGS.get(k)||0;
+    const r = doneByGS.get(k)||0;
+    return {gestor, semana, plan:a, done:r, cov: pct(r,a), last: lastByGS.get(k)||''};
+  }).sort((a,b)=> String(a.gestor).localeCompare(String(b.gestor),'es',{numeric:true}) || Number(a.semana)-Number(b.semana));
+
+  // Tabla de clientes (detalle plan vs realizadas)
+  // Unimos plan por cliente con calls por cliente (múltiples)
+  const doneByCod = new Map();
+  const lastByCod = new Map();
+  done.forEach(d=>{
+    const k = d.cod+'||'+d.semana;
+    doneByCod.set(k, (doneByCod.get(k)||0) + 1);
+    const fh = d.fecha_hora;
+    if(fh){
+      const cur = lastByCod.get(k);
+      if(!cur || new Date(fh) > new Date(cur)) lastByCod.set(k, fh);
+    }
+  });
+
+  const detalle = plan.map(p=>{
+    const k = p.cod+'||'+p.semana;
+    return {
+      cliente: p.cliente,
+      cod: p.cod,
+      vendedor: p.vendedor,
+      gestor: p.gestor,
+      realizadas: doneByCod.get(k)||0,
+      last: lastByCod.get(k)||''
+    };
+  }).sort((a,b)=> String(a.cliente).localeCompare(String(b.cliente),'es',{numeric:true}));
+
+  return { planTot, doneTot, covTot, resumenRows, detalle };
 }
 
 function renderResumenSem(){
   ensureResumenFilters();
-  const {semana, vendedor, gestor} = resumenFilters();
-  const all = computeResumenData();
+  const R = computeResumen();
 
-  // Filtro por Semana y Gestor (vendedor se usa si lo deseas como proxy; aquí la meta es por gestor)
-  const filtered = all.filter(r => {
-    if(semana && String(r.semana)!==String(semana)) return false;
-    if(gestor && String(r.gestor)!==String(gestor)) return false;
-    return true;
-  });
+  // KPIs
+  const ids = ['kpiPlan','kpiDone','kpiCov','rwPlan','rwDone','rwCov'];
+  const vals = [R.planTot, R.doneTot, R.covTot, R.planTot, R.doneTot, R.covTot];
+  ids.forEach((id,i)=>{ const el=document.getElementById(id); if(el) el.textContent = vals[i]; });
 
-  // KPIs totales
-  const planTot = filtered.reduce((a,b)=>a+b.plan,0);
-  const doneTot = filtered.reduce((a,b)=>a+b.done,0);
-  const covTot = (planTot>0) ? Math.round(doneTot*100/planTot)+'%' : '0%';
-
-  const kpiPlan = document.getElementById('kpiPlan');
-  const kpiDone = document.getElementById('kpiDone');
-  const kpiCov  = document.getElementById('kpiCov');
-  const rwPlan  = document.getElementById('rwPlan');
-  const rwDone  = document.getElementById('rwDone');
-  const rwCov   = document.getElementById('rwCov');
-
-  if(kpiPlan) kpiPlan.textContent = planTot;
-  if(kpiDone) kpiDone.textContent = doneTot;
-  if(kpiCov)  kpiCov.textContent  = covTot;
-  if(rwPlan)  rwPlan.textContent  = planTot;
-  if(rwDone)  rwDone.textContent  = doneTot;
-  if(rwCov)   rwCov.textContent   = covTot;
-
-  // Tabla
+  // Tabla Gestor+Semana
   const tb = document.querySelector('#rwTbl tbody');
   if(tb){
     tb.innerHTML='';
-    filtered
-      .sort((a,b)=> String(a.gestor).localeCompare(String(b.gestor),'es',{numeric:true}) || Number(a.semana)-Number(b.semana))
-      .forEach(r=>{
-        const tr = document.createElement('tr');
-        tr.innerHTML = '<td>'+ (r.gestor||'') +'</td>'+
-                       '<td>'+ (r.semana||'') +'</td>'+
-                       '<td>'+ (r.plan||0) +'</td>'+
-                       '<td>'+ (r.done||0) +'</td>'+
-                       '<td>'+ (r.cov||'0%') +'</td>'+
-                       '<td>'+ (r.last||'') +'</td>';
-        tb.appendChild(tr);
-      });
+    R.resumenRows.forEach(r=>{
+      const tr = document.createElement('tr');
+      tr.innerHTML = '<td>'+ (r.gestor||'') +'</td>'+
+                     '<td>'+ (r.semana||'') +'</td>'+
+                     '<td>'+ (r.plan||0) +'</td>'+
+                     '<td>'+ (r.done||0) +'</td>'+
+                     '<td>'+ (r.cov||'0%') +'</td>'+
+                     '<td>'+ (r.last||'') +'</td>';
+      tb.appendChild(tr);
+    });
+  }
+
+  // Detalle de clientes (si existe contenedor superior, lo llenamos)
+  const detWrap = document.getElementById('repDetalleWrap');
+  // Conservamos el reporte original, pero si existe una tabla #rwClientsTbl la rellenamos
+  let detTbl = document.getElementById('rwClientsTbl');
+  if(!detTbl){
+    // Crear una tabla de clientes mínima si no existía
+    const host = document.getElementById('screenResumenSem');
+    if(host){
+      const holder = document.createElement('div');
+      holder.style.cssText = 'margin:8px 0; max-height:50vh; overflow:auto; border-radius:12px;';
+      holder.innerHTML = '<table class="table" id="rwClientsTbl"><thead><tr>'+
+        '<th>Cliente</th><th>Cod</th><th>Vendedor</th><th>Gestor</th><th>Realizadas</th><th>Última llamada</th>'+
+        '</tr></thead><tbody></tbody></table>';
+      host.querySelector('.card')?.appendChild(holder);
+      detTbl = holder.querySelector('#rwClientsTbl');
+    }
+  }
+  if(detTbl){
+    const body = detTbl.querySelector('tbody');
+    body.innerHTML='';
+    R.detalle.forEach(r=>{
+      const tr = document.createElement('tr');
+      tr.innerHTML = '<td>'+ (r.cliente||'') +'</td>'+
+                     '<td>'+ (r.cod||'') +'</td>'+
+                     '<td>'+ (r.vendedor||'') +'</td>'+
+                     '<td>'+ (r.gestor||'') +'</td>'+
+                     '<td>'+ (r.realizadas||0) +'</td>'+
+                     '<td>'+ (r.last||'') +'</td>';
+      body.appendChild(tr);
+    });
   }
 
   // Info
+  const {semana, vendedor, gestor} = resumenFilters();
   const info = document.getElementById('rwInfo');
   if(info){
     info.textContent = 'Filtrado por ' +
       (semana ? ('Semana '+semana) : 'todas las semanas') +
+      (vendedor ? (', Vendedor: '+vendedor) : '') +
       (gestor ? (', Gestor: '+gestor) : '');
   }
 }
 
 function exportResumenCSV(){
-  const tb = document.querySelector('#rwTbl tbody');
-  const rows = [['Gestor','Semana','A realizar','Realizadas','% Cobertura','Última llamada']];
-  if(tb){
-    tb.querySelectorAll('tr').forEach(tr=>{
-      const cells = Array.from(tr.children).map(td=>td.textContent||'');
-      rows.push(cells);
-    });
-  }
+  const R = computeResumen();
+  const rows = [['Gestor','Semana','A realizar','Realizadas','% Cobertura','Última llamada']]
+    .concat(R.resumenRows.map(r=>[r.gestor,r.semana,r.plan,r.done,r.cov,r.last]));
   const csv = rows.map(r=>r.map(v=>{
-    const s = String(v or '');
-    return (s.find?.(',') || s.find?.('"') || s.find?.('\n')) ? '"' + s.replace(/"/g,'""') + '"' : s;
+    const s = String(v??'');
+    return (/[",\n]/.test(s)) ? '"' + s.replace(/"/g,'""') + '"' : s;
   }).join(',')).join('\\n');
   const a=document.createElement('a');
   a.href = URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8;'}));
@@ -3952,45 +4014,28 @@ function exportResumenCSV(){
 }
 
 // Abrir / cerrar overlay de Resumen (Sem)
-function openResumenOverlay(){
-  document.body.classList.add('show-resumen');
-  // Render en apertura
-  renderResumenSem();
-}
-function closeResumenOverlay(){
-  document.body.classList.remove('show-resumen');
-}
+function openResumenOverlay(){ document.body.classList.add('show-resumen'); renderResumenSem(); }
+function closeResumenOverlay(){ document.body.classList.remove('show-resumen'); }
 
-// Wire events para TODOS los botones duplicados sin eliminar nada
 function wireResumenButtons(){
-  // Botones duplicados con id repetido (aceptamos y atachamos a todos)
   document.querySelectorAll('button#btnReporteResumen').forEach(btn=>{
     btn.addEventListener('click', openResumenOverlay);
   });
-  // Botón suelto
   const b2 = document.getElementById('btnOpenResumenSem');
   if(b2) b2.addEventListener('click', openResumenOverlay);
-
-  // Cerrar
   const volver = document.getElementById('rwVolver');
   if(volver) volver.addEventListener('click', closeResumenOverlay);
-
-  // Re-render al cambiar filtros del Resumen
   ['rwSemana','rwVendedor','rwGestor'].forEach(id=>{
     const el = document.getElementById(id);
     if(el) el.addEventListener('change', renderResumenSem);
   });
-
-  // Export
   const exp = document.getElementById('rwExport');
   if(exp) exp.addEventListener('click', exportResumenCSV);
 }
 
-// Ejecutar cuando DOM esté listo y después del init()
 (function(){
   if(document.readyState === 'complete' || document.readyState === 'interactive'){
     setTimeout(wireResumenButtons, 150);
-    // Intentar también después del init principal
     setTimeout(ensureResumenFilters, 500);
   }else{
     document.addEventListener('DOMContentLoaded', ()=>{
@@ -3999,7 +4044,7 @@ function wireResumenButtons(){
     });
   }
 })();
-</script>
+
 
 </body>
 </html>
