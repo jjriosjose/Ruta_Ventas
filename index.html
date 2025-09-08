@@ -3784,275 +3784,176 @@ document.addEventListener('click', (ev)=>{
 
 </script>
 
-<!-- KPI v2 Overlay (non-intrusive) -->
-<div id="kpiV2Overlay" style="position:fixed;inset:0;display:none;background:rgba(0,0,0,.35);z-index:9998;">
-  <div style="position:absolute;left:50%;top:52%;transform:translate(-50%,-50%);width:min(1100px,92vw);max-height:86vh;overflow:auto;background:#fff;border-radius:16px;box-shadow:0 10px 40px rgba(0,0,0,.25);padding:18px 18px 24px;">
-    <div style="display:flex;align-items:center;gap:8px;justify-content:space-between;">
-      <h3 style="margin:0;font-weight:700;">📈 KPI — Resumen Semanal (v2)</h3>
-      <button id="kpiV2Close" class="btn btn-light">← Volver</button>
-    </div>
-
-    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin:12px 0 8px;">
-      <div class="card" style="padding:14px;border-radius:12px;">
-        <div style="font-size:12px;opacity:.7;">A realizar (Itinerarios)</div>
-        <div id="kpiV2Plan" style="font-size:32px;font-weight:800;">0</div>
-      </div>
-      <div class="card" style="padding:14px;border-radius:12px;">
-        <div style="font-size:12px;opacity:.7;">Realizadas (Llamadas)</div>
-        <div id="kpiV2Done" style="font-size:32px;font-weight:800;">0</div>
-      </div>
-      <div class="card" style="padding:14px;border-radius:12px;">
-        <div style="font-size:12px;opacity:.7;">% Cobertura</div>
-        <div id="kpiV2Cov" style="font-size:32px;font-weight:800;">0%</div>
-      </div>
-    </div>
-
-    <div style="display:flex;gap:8px;flex-wrap:wrap;margin:6px 0 12px;">
-      <label>Semana
-        <select id="kpiV2Semana" class="form-select" style="min-width:130px;"></select>
-      </label>
-      <label>Vendedor
-        <select id="kpiV2Vendedor" class="form-select" style="min-width:180px;"></select>
-      </label>
-      <label>Gestor
-        <select id="kpiV2Gestor" class="form-select" style="min-width:180px;"></select>
-      </label>
-      <button id="kpiV2Export" class="btn btn-outline-secondary" style="margin-left:auto;">⬇ Exportar CSV</button>
-    </div>
-
-    <div class="card" style="padding:10px;border-radius:12px;margin-bottom:8px;">
-      <div style="font-weight:700;margin:6px 0 8px;">Detalle de clientes — Itinerario</div>
-      <div style="max-height:34vh;overflow:auto;">
-        <table class="table" id="kpiV2Clients">
-          <thead><tr>
-            <th>Cliente</th><th>Vendedor</th><th>Gestor</th><th>Semana</th><th>Realizadas</th><th>Última llamada</th>
-          </tr></thead>
-          <tbody></tbody>
-        </table>
-      </div>
-    </div>
-
-    <div class="card" style="padding:10px;border-radius:12px;">
-      <div style="font-weight:700;margin:6px 0 8px;">Resumen — Gestor x Semana</div>
-      <table class="table" id="kpiV2GS">
-        <thead><tr>
-          <th>Gestor</th><th>Semana</th><th>A realizar</th><th>Realizadas</th><th>% Cobertura</th><th>Última llamada</th>
-        </tr></thead>
-        <tbody></tbody>
-      </table>
-    </div>
-  </div>
-</div>
-
-<!-- Floating button to open KPI v2 -->
-<button id="openKpiV2" title="KPI v2" style="position:fixed;right:16px;bottom:16px;z-index:9999;border:0;background:#111;color:#fff;padding:10px 14px;border-radius:999px;box-shadow:0 6px 22px rgba(0,0,0,.3);font-weight:700;">📈 KPI v2</button>
-
-
-<script>
-// === KPI v2 — 100% desde Calendario (plan) y Llamadas (done) por Gestor+Semana ===
+<script id="kpi-resumen-clean-v1">
+// === KPI Resumen (Semanal) — limpio y autocontenido ===
 (function(){
-  function nz(x){ return Number(x)||0; }
-  function pct(n, d){ return (d>0)? Math.round(n*100/d)+'%' : '0%'; }
+  const $  = (s,root=document)=>root.querySelector(s);
+  const $$ = (s,root=document)=>Array.from(root.querySelectorAll(s));
+
+  function ST(){ return (window.STATE||window.__STATE||{}); }
+  function getCalendario(){ const st=ST(); return Array.isArray(st.calendario)? st.calendario : (Array.isArray(st.Calendario)? st.Calendario : []); }
+  function getCalls(){ const st=ST(); return Array.isArray(st.calls)? st.calls : (Array.isArray(st.Calls)? st.Calls : []); }
+
+  function get(obj, keys){
+    for(const k of keys){ if(obj && obj[k]!=null && obj[k]!=='') return obj[k]; }
+    const flat={}; for(const k in obj){ flat[k.toLowerCase().replace(/\s|_/g,'')]=obj[k]; }
+    for(const k of keys){ const nk=k.toLowerCase().replace(/\s|_/g,''); if(flat[nk]!=null && flat[nk]!=='') return flat[nk]; }
+    return '';
+  }
   function norm(s){ return (s??'').toString().trim(); }
+  function toDate(x){
+    if(!x) return null;
+    try{
+      const d=new Date(x); if(!isNaN(d)) return d;
+      const s=String(x).trim();
+      const m=s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})(?:\s+(\d{1,2}):(\d{2}))?$/);
+      if(m){ const dd=+m[1], mm=+m[2]-1, yy=+m[3]<100?2000+(+m[3]):+m[3], hh=m[4]?+m[4]:0, mi=m[5]?+m[5]:0; return new Date(yy,mm,dd,hh,mi); }
+    }catch(e){}
+    return null;
+  }
+  function mapWeek(w){
+    const n = parseInt(String(w).replace(/\D/g,''), 10);
+    if(!isFinite(n)) return String(w||'');
+    if(n<=4 && n>0) return String(n);
+    if(n>4) return String(((n-1)%4)+1);
+    return String(w||'');
+  }
+  function csvEscape(v){ const s=String(v??''); return /[",\n]/.test(s)? '"'+s.replace(/"/g,'""')+'"' : s; }
 
-  function pickSemana(r){
-    return norm(r['N Semana'] ?? r['N_Semana'] ?? r['NSemana'] ?? r['SEMANA'] ?? r['Semana'] ?? r['semana'] ?? '');
-  }
-  function pickGestor(r){
-    return norm(r['gestor_servicio'] ?? r['Gestor'] ?? r['GESTOR_SERVICIO'] ?? r['Gestor cartera'] ?? r['gestor_cartera'] ?? r['gcartera'] ?? '');
-  }
-  function pickVendedor(r){ return norm(r['vendedor'] ?? r['Vendedor'] ?? r['VENDEDOR'] ?? ''); }
-  function pickCliente(r){ return norm(r['RazonSocial'] ?? r['cliente'] ?? r['Cliente'] ?? ''); }
-  function mapPlanWeek(w){
-    // Si llegan semanas grandes (ej. 32,33,34,35) las mapeamos a 1..4 de la misma forma que el resto de la app
-    const n = Number(w)||0;
-    if(n<=4) return String(n);
-    const bucket = ((n-1)%4)+1;
-    return String(bucket);
+  function uniqueSorted(arr){
+    return Array.from(new Set(arr.filter(x=>x!=null && x!=='')))
+      .sort((a,b)=>{
+        const na=Number(a), nb=Number(b);
+        if(isFinite(na)&&isFinite(nb)) return na-nb;
+        return String(a).localeCompare(String(b),'es',{numeric:true});
+      });
   }
 
-  function getFilters(){
-    const semana = document.getElementById('kpiV2Semana')?.value || '';
-    const vendedor = document.getElementById('kpiV2Vendedor')?.value || '';
-    const gestor = document.getElementById('kpiV2Gestor')?.value || '';
-    return { semana, vendedor, gestor };
-  }
-
-  function loadPlan(){
-    const cal = Array.isArray(window.STATE?.calendario) ? window.STATE.calendario : [];
-    return cal.map(r=> ({
-      semana: mapPlanWeek(pickSemana(r)),
-      gestor: pickGestor(r),
-      vendedor: pickVendedor(r),
-      cliente: pickCliente(r),
+  function fillResumenFilters(){
+    const cal = getCalendario().map(r=>({
+      semana: mapWeek(get(r, ['N Semana','Semana','SEMANA','semana','NSemana','N_Semana'])),
+      vendedor: norm(get(r,['Vendedor','VENDEDOR','vendedor'])),
+      gestor: norm(get(r,['gestor_servicio','Gestor','GESTOR_SERVICIO']))
     }));
-  }
-
-  function loadDone(){
-    const rows = (typeof window.loadAllCallRecords === 'function') ? window.loadAllCallRecords() : [];
-    return rows.map(r=>({
+    const calls = getCalls().map(r=>({
       semana: String(r.semana||''),
-      gestor: norm(r.gestor_servicio||r.gestor||''),
       vendedor: norm(r.vendedor||''),
-      cliente: norm(r.cliente||''),
-      fecha_hora: norm(r.fecha_hora||''),
+      gestor: norm(r.gestor||r.gestor_servicio||'')
     }));
+    const semanas = uniqueSorted([...(cal.map(x=>x.semana).filter(Boolean)), ...(calls.map(x=>x.semana).filter(Boolean))]);
+    const vendedores = uniqueSorted([...(cal.map(x=>x.vendedor)), ...(calls.map(x=>x.vendedor))]);
+    const gestores = uniqueSorted([...(cal.map(x=>x.gestor)), ...(calls.map(x=>x.gestor))]);
+
+    const selW = $('#rwSemana'); if(selW && selW.children.length<=1){ selW.innerHTML = '<option value=\"\">Todas</option>'+ (semanas.length? semanas: ['1','2','3','4']).map(v=>`<option>${v}</option>`).join(''); }
+    const selV = $('#rwVendedor'); if(selV && selV.children.length<=1){ selV.innerHTML = '<option value=\"\">Todos</option>'+ vendedores.map(v=>`<option>${v}</option>`).join(''); }
+    const selG = $('#rwGestor'); if(selG && selG.children.length<=1){ selG.innerHTML = '<option value=\"\">Todos</option>'+ gestores.map(v=>`<option>${v}</option>`).join(''); }
   }
 
-  function ensureFilterOptions(){
-    const plan = loadPlan();
-    const vendSel = document.getElementById('kpiV2Vendedor');
-    const gesSel  = document.getElementById('kpiV2Gestor');
-    const semSel  = document.getElementById('kpiV2Semana');
+  function computeResumenAggregates(){
+    const fSem = $('#rwSemana')?.value || '';
+    const fVend= $('#rwVendedor')?.value || '';
+    const fGest= $('#rwGestor')?.value || '';
 
-    const vendors = Array.from(new Set(plan.map(p=>p.vendedor).filter(Boolean))).sort((a,b)=>a.localeCompare(b,'es',{numeric:true}));
-    const gestors = Array.from(new Set(plan.map(p=>p.gestor).filter(Boolean))).sort((a,b)=>a.localeCompare(b,'es',{numeric:true}));
-    const semanas = ['','1','2','3','4']; // controlado por mapPlanWeek
-
-    if(semSel && !semSel.dataset.ready){
-      semSel.innerHTML = semanas.map(v=>`<option value="${v}">${v? v : 'Todas'}</option>`).join('');
-      semSel.dataset.ready='1';
-    }
-    if(vendSel && !vendSel.dataset.ready){
-      vendSel.innerHTML = ['<option value="">Todos</option>'].concat(vendors.map(v=>`<option>${v}</option>`)).join('');
-      vendSel.dataset.ready='1';
-    }
-    if(gesSel && !gesSel.dataset.ready){
-      gesSel.innerHTML = ['<option value="">Todos</option>'].concat(gestors.map(v=>`<option>${v}</option>`)).join('');
-      gesSel.dataset.ready='1';
-    }
-  }
-
-  function applyFilters(rows){
-    const {semana, vendedor, gestor} = getFilters();
-    return rows.filter(r=>{
-      if(semana && r.semana!==semana) return false;
-      if(vendedor && r.vendedor!==vendedor) return false;
-      if(gestor && r.gestor!==gestor) return false;
+    // Plan (Calendario)
+    const planF = getCalendario().map(r=>({
+      semana: mapWeek(get(r, ['N Semana','Semana','SEMANA','semana','NSemana','N_Semana'])),
+      vendedor: norm(get(r,['Vendedor','VENDEDOR','vendedor'])),
+      gestor: norm(get(r,['gestor_servicio','Gestor','GESTOR_SERVICIO']))
+    })).filter(p=>{
+      if(fSem && String(p.semana)!==String(fSem)) return false;
+      if(fVend && p.vendedor!==fVend) return false;
+      if(fGest && p.gestor!==fGest) return false;
       return true;
     });
+    const planMap=new Map();
+    planF.forEach(p=>{ const k=p.gestor+'|'+(p.semana||''); planMap.set(k,(planMap.get(k)||0)+1); });
+
+    // Realizadas (Llamadas)
+    const calls = getCalls().map(r=>({
+      semana: String(r.semana||''),
+      vendedor: norm(r.vendedor||''),
+      gestor: norm(r.gestor||r.gestor_servicio||''),
+      fecha: toDate(r.fecha_hora||r.fecha||r['Fecha/Hora']||r['Fecha']||'')
+    })).filter(c=>{
+      if(fSem && String(c.semana)!==String(fSem)) return false;
+      if(fVend && c.vendedor!==fVend) return false;
+      if(fGest && c.gestor!==fGest) return false;
+      return true;
+    });
+    const doneMap=new Map(), lastMap=new Map();
+    calls.forEach(c=>{
+      const k=c.gestor+'|'+(c.semana||'');
+      doneMap.set(k,(doneMap.get(k)||0)+1);
+      const p=lastMap.get(k); if(c.fecha && (!p || c.fecha>p)) lastMap.set(k,c.fecha);
+    });
+
+    // Unir claves
+    const keys=new Set([...planMap.keys(), ...doneMap.keys()]);
+    const rows=[];
+    keys.forEach(k=>{
+      const [gestor, semana] = k.split('|');
+      const a = planMap.get(k)||0;
+      const r = doneMap.get(k)||0;
+      const cov = a? (r/a*100) : (r?100:0);
+      const last = lastMap.get(k) ? lastMap.get(k).toLocaleString() : '-';
+      rows.push({gestor, semana, plan:a, done:r, cov: +cov.toFixed(0), last});
+    });
+    rows.sort((x,y)=> x.gestor.localeCompare(y.gestor,'es',{numeric:true}) || String(x.semana).localeCompare(String(y.semana),'es',{numeric:true}));
+
+    const totalPlan = rows.reduce((s,x)=>s+x.plan,0);
+    const totalDone = rows.reduce((s,x)=>s+x.done,0);
+    const totalCov  = totalPlan? Math.round(totalDone*100/totalPlan) : (totalDone?100:0);
+
+    return {rows, totalPlan, totalDone, totalCov, planFCount: planF.length, callsCount: calls.length};
   }
 
-  function compute(){
-    const plan = applyFilters(loadPlan());
-    const done = applyFilters(loadDone());
-
-    // KPIs
-    const planTot = plan.length;
-    const doneTot = done.length;
-    const covTot  = pct(doneTot, planTot);
-
-    // Resumen por Gestor+Semana
-    const key = (g,s)=>g+'||'+s;
-    const planBy = new Map(), doneBy = new Map(), lastBy = new Map();
-    plan.forEach(p=>{
-      const k = key(p.gestor, p.semana);
-      planBy.set(k, (planBy.get(k)||0)+1);
-    });
-    done.forEach(d=>{
-      const k = key(d.gestor, d.semana);
-      doneBy.set(k, (doneBy.get(k)||0)+1);
-      if(d.fecha_hora){
-        const cur = lastBy.get(k);
-        if(!cur || new Date(d.fecha_hora) > new Date(cur)) lastBy.set(k, d.fecha_hora);
-      }
-    });
-
-    const keys = new Set([...planBy.keys(), ...doneBy.keys()]);
-    const resumen = Array.from(keys).map(k=>{
-      const [gestor, semana] = k.split('||');
-      const a = planBy.get(k)||0;
-      const r = doneBy.get(k)||0;
-      return {gestor, semana, plan:a, done:r, cov: pct(r,a), last:lastBy.get(k)||''};
-    }).sort((a,b)=> a.gestor.localeCompare(b.gestor,'es',{numeric:true}) || (Number(a.semana)-Number(b.semana)));
-
-    // Detalle clientes (plan cruzado por cliente+semana)
-    const doneByCliente = new Map(), lastByCliente = new Map();
-    done.forEach(d=>{
-      const k = d.cliente+'||'+d.semana;
-      doneByCliente.set(k, (doneByCliente.get(k)||0)+1);
-      if(d.fecha_hora){
-        const cur = lastByCliente.get(k);
-        if(!cur || new Date(d.fecha_hora) > new Date(cur)) lastByCliente.set(k, d.fecha_hora);
-      }
-    });
-    const detalle = plan.map(p=>{
-      const k = p.cliente+'||'+p.semana;
-      return { cliente:p.cliente, vendedor:p.vendedor, gestor:p.gestor, semana:p.semana,
-               realizadas: (doneByCliente.get(k)||0), last:(lastByCliente.get(k)||'') };
-    }).sort((a,b)=> a.cliente.localeCompare(b.cliente,'es',{numeric:true}));
-
-    return { planTot, doneTot, covTot, resumen, detalle };
-  }
-
-  function render(){
-    ensureFilterOptions();
-    const R = compute();
-
-    // KPIs
-    const map = {'kpiV2Plan':R.planTot, 'kpiV2Done':R.doneTot, 'kpiV2Cov':R.covTot};
-    Object.entries(map).forEach(([id,val])=>{ const el=document.getElementById(id); if(el) el.textContent = val; });
-
-    // Tabla Resumen
-    const tb = document.querySelector('#kpiV2GS tbody');
-    if(tb){
-      tb.innerHTML='';
-      R.resumen.forEach(r=>{
-        const tr = document.createElement('tr');
-        tr.innerHTML = `<td>${r.gestor||''}</td><td>${r.semana||''}</td><td>${r.plan||0}</td><td>${r.done||0}</td><td>${r.cov||'0%'}</td><td>${r.last||''}</td>`;
-        tb.appendChild(tr);
-      });
-    }
-    // Detalle clientes
-    const cb = document.querySelector('#kpiV2Clients tbody');
-    if(cb){
-      cb.innerHTML='';
-      R.detalle.forEach(r=>{
-        const tr = document.createElement('tr');
-        tr.innerHTML = `<td>${r.cliente||''}</td><td>${r.vendedor||''}</td><td>${r.gestor||''}</td><td>${r.semana||''}</td><td>${r.realizadas||0}</td><td>${r.last||''}</td>`;
-        cb.appendChild(tr);
-      });
+  function renderResumenKpisAndChips(agg){
+    const ids = {kpiPlan:agg.totalPlan, kpiDone:agg.totalDone, kpiCov:agg.totalCov+'%', rwPlan:agg.totalPlan, rwDone:agg.totalDone, rwCov:agg.totalCov+'%'};
+    Object.entries(ids).forEach(([id,val])=>{ const el=$( '#'+id.replace(/^#/,'') ) || document.getElementById(id); if(el) el.textContent=String(val); });
+    const info = $('#rwInfo'); if(info){
+      const s=$('#rwSemana')?.value||'Todas', v=$('#rwVendedor')?.value||'Todos', g=$('#rwGestor')?.value||'Todos';
+      info.textContent=`Semana: ${s||'Todas'} · Vendedor: ${v||'Todos'} · Gestor: ${g||'Todos'}`;
     }
   }
-
-  function exportCSV(){
-    const R = compute();
-    const rows = [['Gestor','Semana','A realizar','Realizadas','% Cobertura','Última llamada']]
-      .concat(R.resumen.map(r=>[r.gestor,r.semana,r.plan,r.done,r.cov,r.last]));
-    const csv = rows.map(r=>r.map(v=>{
-      const s = String(v??''); return /[",\n]/.test(s) ? `"${s.replace(/"/g,'""')}"` : s;
-    }).join(',')).join('\n');
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8;'}));
-    a.download = 'kpi_v2_resumen.csv';
-    a.click();
-    URL.revokeObjectURL(a.href);
+  function renderResumenTable(agg){
+    const tb = $('#rwTbl')?.querySelector('tbody');
+    if(!tb) return;
+    tb.innerHTML='';
+    const frag=document.createDocumentFragment();
+    agg.rows.forEach(r=>{
+      const tr=document.createElement('tr');
+      tr.innerHTML = `<td>${r.gestor}</td><td>${r.semana}</td><td>${r.plan}</td><td>${r.done}</td><td>${r.cov}%</td><td>${r.last}</td>`;
+      frag.appendChild(tr);
+    });
+    tb.appendChild(frag);
   }
 
-  function open(){ document.getElementById('kpiV2Overlay').style.display='block'; render(); }
-  function close(){ document.getElementById('kpiV2Overlay').style.display='none'; }
+  function exportResumenCSV(agg){
+    const lines = [['Gestor','Semana','A realizar','Realizadas','% Cobertura','Última llamada']]
+      .concat(agg.rows.map(r=>[r.gestor,r.semana,r.plan,r.done,`${r.cov}%`,r.last]));
+    const csv = lines.map(row=>row.map(csvEscape).join(',')).join('\\n');
+    const blob = new Blob([csv],{type:'text/csv;charset=utf-8;'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a'); a.href=url; a.download='resumen_semanal.csv'; a.click(); URL.revokeObjectURL(url);
+  }
+
+  function recomputeResumen(){ fillResumenFilters(); const agg=computeResumenAggregates(); renderResumenKpisAndChips(agg); renderResumenTable(agg); return agg; }
 
   function wire(){
-    const btn = document.getElementById('openKpiV2');
-    const over= document.getElementById('kpiV2Overlay');
-    const back= document.getElementById('kpiV2Close');
-    if(btn) btn.addEventListener('click', open);
-    if(back) back.addEventListener('click', close);
-    ['kpiV2Semana','kpiV2Vendedor','kpiV2Gestor'].forEach(id=>{
-      const el = document.getElementById(id);
-      if(el) el.addEventListener('change', render);
+    // Recompute on filter changes
+    ['rwSemana','rwVendedor','rwGestor'].forEach(id=>{
+      const el=document.getElementById(id); if(el) el.addEventListener('change', ()=>recomputeResumen());
     });
-    const ex = document.getElementById('kpiV2Export');
-    if(ex) ex.addEventListener('click', exportCSV);
-    // Cerrar haciendo click fuera
-    if(over) over.addEventListener('click', (e)=>{ if(e.target===over) close(); });
+    // Export
+    const exp=document.getElementById('rwExport'); if(exp) exp.addEventListener('click', ()=>{ const agg=recomputeResumen(); exportResumenCSV(agg); });
+    // When overlay visible (body.show-resumen), recompute
+    const obs = new MutationObserver(()=>{ if(document.body.classList.contains('show-resumen')) setTimeout(recomputeResumen,30); });
+    obs.observe(document.body,{attributes:true,attributeFilter:['class']});
+    // Safe initial compute
+    document.addEventListener('DOMContentLoaded', ()=> setTimeout(()=>{ if(document.body.classList.contains('show-resumen') || document.getElementById('screenResumenSem')?.style.display!=='none'){ recomputeResumen(); } }, 80));
   }
 
-  if(document.readyState === 'complete' || document.readyState === 'interactive'){
-    setTimeout(()=>{ wire(); }, 80);
-  }else{
-    document.addEventListener('DOMContentLoaded', ()=> setTimeout(()=>{ wire(); }, 80));
-  }
+  try{ wire(); }catch(e){ console.warn('KPI resumen clean wire err', e); }
 })();
 </script>
 
