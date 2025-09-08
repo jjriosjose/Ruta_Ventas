@@ -147,6 +147,33 @@ details > summary{
 }
 </style>
 
+
+<style id="safe-override-resumen">
+/* Hide duplicated Reporte (Resumen) buttons only inside LOGIN */
+#login #btnReporteResumen { display: none !important; }
+/* Hide the standalone launcher button */
+#btnOpenResumenSem { display: none !important; }
+/* Force the Resumen (Sem) screen to stay hidden in main layout */
+#screenResumenSem { display: none !important; }
+/* Show Resumen as a full-screen overlay when body has the flag */
+body.show-resumen #screenResumenSem {
+  display: block !important;
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,.45);
+  z-index: 10000;
+  overflow: auto;
+  padding: 16px;
+  backdrop-filter: blur(2px);
+}
+body.show-resumen #screenResumenSem > .card {
+  width: min(1180px, 96vw);
+  margin: 12px auto;
+  max-height: 90vh;
+  overflow: auto;
+}
+</style>
+
 </head>
 <body>
   <div class="container">
@@ -2625,6 +2652,152 @@ document.addEventListener('click', (ev)=>{
   mo.observe(document.documentElement || document.body, {childList:true, subtree:true});
 })();
 // === End patch ===
+</script>
+
+
+<!-- === Safe patch: Screen Manager + Delegated Events (no ID removals) === -->
+<script>
+(function(){
+  // Avoid polluting global scope; do not override existing functions.
+  const $$ = (sel, root=document) => Array.from(root.querySelectorAll(sel));
+  const $ = (sel, root=document) => root.querySelector(sel);
+
+  // Basic screen manager that coexists with existing code
+  const SCREENS = ["login","app","screenResumenSem"];
+  const navStack = [];
+
+  function hideAll(){
+    SCREENS.forEach(id => {
+      const el = document.getElementById(id) || document.querySelector("#"+id);
+      if(!el) return;
+      // Some are <section>, some may be other elements; respect current "hidden" strategy
+      if(id === "app"){
+        // app usa clase 'hidden'; si existe, usarla
+        el.classList && el.classList.add("hidden");
+      }
+      // Para login y screenResumenSem, usan style.display
+      el.style && (el.style.display = (id==="login" ? "" : "none"));
+    });
+  }
+
+  function show(id){
+    // No rompas si el elemento no existe
+    const el = document.getElementById(id) || document.querySelector("#"+id);
+    if(!el) return;
+    if(id==="app"){
+      el.classList && el.classList.remove("hidden");
+    } else {
+      el.style && (el.style.display = "");
+    }
+  }
+
+  function currentScreen(){
+    // heurística simple
+    if(document.getElementById("app") && !document.getElementById("app").classList.contains("hidden")) return "app";
+    if(document.getElementById("screenResumenSem") && document.getElementById("screenResumenSem").style.display !== "none") return "screenResumenSem";
+    return "login";
+  }
+
+  function showScreen(id){
+    const cur = currentScreen();
+    if(cur !== id){ navStack.push(cur); }
+    // resetea y muestra
+    // Cuidado: login <section id="login"> está visible por defecto.
+    //           app usa clase hidden; resumenSem usa display:none.
+    // Ocultar todo sin cambiar IDs ni estructura
+    // Primero ocultar
+    if (document.getElementById("login")) document.getElementById("login").style.display = "none";
+    if (document.getElementById("app")) document.getElementById("app").classList.add("hidden");
+    if (document.getElementById("screenResumenSem")) document.getElementById("screenResumenSem").style.display = "none";
+
+    // Luego mostrar la solicitada
+    if(id==="login"){
+      const lg = document.getElementById("login");
+      if(lg) lg.style.display = "";
+    } else if(id==="app"){
+      const ap = document.getElementById("app");
+      if(ap) ap.classList.remove("hidden");
+    } else if(id==="screenResumenSem"){
+      const rs = document.getElementById("screenResumenSem");
+      if(rs) rs.style.display = "";
+    }
+  }
+
+  function goBack(){
+    const prev = navStack.pop();
+    if(prev){ showScreen(prev); }
+    else { showScreen("app"); } // fallback
+  }
+
+  // Expose minimal API for other inline handlers (without colliding if already present)
+  window.__nav = window.__nav || { showScreen, goBack };
+
+  document.addEventListener("DOMContentLoaded", function(){
+    // 1) Delegar clicks para todos los elementos con ID duplicado #btnReporteResumen
+    document.addEventListener("click", function(ev){
+      const btn = ev.target.closest("#btnReporteResumen");
+      if(btn){
+        ev.preventDefault();
+        // Siempre abre el Resumen (Sem); el KPI/tabla se calcula por la lógica existente
+        showScreen("screenResumenSem");
+        return;
+      }
+      const volver = ev.target.closest("#rwVolver");
+      if(volver){
+        ev.preventDefault();
+        goBack();
+        return;
+      }
+      const toggleFiltros = ev.target.closest("#btnToggleFiltros");
+      if(toggleFiltros){
+        ev.preventDefault();
+        const panel = document.getElementById("panelFiltros");
+        if(panel){
+          const isHidden = panel.classList.contains("hidden");
+          panel.classList.toggle("hidden");
+          // Si se oculta, permitir que lo de abajo se vea completo
+          if(!isHidden){
+            // Hacemos scroll para asegurar visibilidad de contenido inferior
+            setTimeout(()=>{
+              window.scrollTo({ top: document.body.scrollHeight, behavior: "smooth" });
+            }, 80);
+          }
+        }
+        return;
+      }
+    }, true);
+
+    // 2) En el arranque, aseguramos que solo Login se vea (si el archivo original lo hace, respetamos)
+    //    No forzamos si el autor ya inició 'app' visible. Simple heurística:
+    try {
+      const appVisible = document.getElementById("app") && !document.getElementById("app").classList.contains("hidden");
+      const rsVisible = document.getElementById("screenResumenSem") && document.getElementById("screenResumenSem").style.display !== "none";
+      const lg = document.getElementById("login");
+      if(lg && !appVisible && !rsVisible){
+        // Mantener login visible por defecto
+        lg.style.display = "";
+      }
+    } catch(e){ /* no-op */ }
+  });
+})();
+</script>
+
+<script id="safe-resumen-overlay">
+(function(){
+  function openResumen(){ document.body.classList.add('show-resumen'); }
+  function closeResumen(){ document.body.classList.remove('show-resumen'); }
+  // Hook into existing buttons
+  document.addEventListener('click', function(ev){
+    const a = ev.target.closest('#btnReporteResumen');
+    if(a){ openResumen(); }
+    const b = ev.target.closest('#rwVolver');
+    if(b){ closeResumen(); }
+  }, true);
+  // Ensure no leftover overlay on load/navigation
+  document.addEventListener('DOMContentLoaded', function(){ document.body.classList.remove('show-resumen'); });
+  // Expose for other scripts if needed
+  window.__resumen = window.__resumen || { open: openResumen, close: closeResumen };
+})();
 </script>
 
 </body>
