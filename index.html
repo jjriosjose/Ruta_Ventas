@@ -3957,5 +3957,295 @@ document.addEventListener('click', (ev)=>{
 })();
 </script>
 
+
+<style>
+/* Legend emphasis: make names black and bold */
+.legend, #legend, .leyenda, .Legend, .leyenda-container {
+  --chip-fg: #111;
+}
+.legend .chip, .legend .badge, .legend .tag,
+#legend .chip, #legend .badge, #legend .tag,
+.leyenda .chip, .leyenda .badge, .leyenda .tag,
+.leyenda-container .chip, .leyenda-container .badge, .leyenda-container .tag,
+.legend button, #legend button, .leyenda button {
+  color: var(--chip-fg) !important;
+  font-weight: 700 !important;
+  text-shadow: none !important;
+}
+</style>
+
+
+<!-- KPI v2 Modal (in-app overlay) -->
+<div id="kpiV2Modal" class="modal" style="display:none; position:fixed; inset:0; background:rgba(12,18,32,.55); z-index:9998;">
+  <div style="position:absolute; left:50%; top:52%; transform:translate(-50%,-50%); width:min(1100px,92vw); max-height:88vh; overflow:auto; background:#fff; border-radius:16px; box-shadow:0 18px 60px rgba(0,0,0,.35);">
+    <div style="display:flex; align-items:center; gap:8px; padding:14px 16px; border-bottom:1px solid #e5e7eb; position:sticky; top:0; background:#fff; z-index:2;">
+      <h3 style="margin:0;">📈 KPI — Resumen (Semanal)</h3>
+      <span id="kpiV2Info" style="color:#6b7280; font-size:12px;"></span>
+      <div style="flex:1"></div>
+      <button id="kpiV2Export" class="btn btn-light">⬇ Exportar CSV</button>
+      <button id="kpiV2Close" class="btn btn-light">← Volver</button>
+    </div>
+
+    <div style="padding:12px 16px;">
+      <div style="display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:10px; margin-bottom:8px;">
+        <label>Semana
+          <select id="kpiV2Semana" class="form-select"><option value="">Todas</option></select>
+        </label>
+        <label>Vendedor
+          <select id="kpiV2Vendedor" class="form-select"><option value="">Todos</option></select>
+        </label>
+        <label>Gestor
+          <select id="kpiV2Gestor" class="form-select"><option value="">Todos</option></select>
+        </label>
+        <label>Buscar
+          <input id="kpiV2Buscar" class="form-control" placeholder="Cliente / Código / Empresa"/>
+        </label>
+      </div>
+
+      <div style="display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px; margin:8px 0 12px;">
+        <div class="card" style="padding:12px; border-radius:12px; border:1px solid #e5e7eb;">
+          <div style="font-size:12px; color:#6b7280;">A realizar (Itinerarios)</div>
+          <div id="kpiV2Plan" style="font-size:28px; font-weight:800;">0</div>
+        </div>
+        <div class="card" style="padding:12px; border-radius:12px; border:1px solid #e5e7eb;">
+          <div style="font-size:12px; color:#6b7280;">Realizadas (Llamadas)</div>
+          <div id="kpiV2Done" style="font-size:28px; font-weight:800;">0</div>
+        </div>
+        <div class="card" style="padding:12px; border-radius:12px; border:1px solid #e5e7eb;">
+          <div style="font-size:12px; color:#6b7280;">% Cobertura</div>
+          <div id="kpiV2Cov" style="font-size:28px; font-weight:800;">0%</div>
+        </div>
+      </div>
+
+      <div style="display:flex; gap:8px; margin:6px 0 10px;">
+        <button id="kpiV2TabResumen" class="btn btn-light">Resumen por Gestor × Semana</button>
+        <button id="kpiV2TabPend" class="btn btn-light">Pendientes (Agenda)</button>
+        <button id="kpiV2TabReal" class="btn btn-light">Realizadas (Historial)</button>
+      </div>
+
+      <div id="kpiV2ViewResumen" style="max-height:50vh; overflow:auto; border-radius:12px; border:1px solid #e5e7eb;">
+        <table class="table" id="kpiV2Tbl">
+          <thead class="table-light" style="position:sticky; top:0; z-index:1;"><tr>
+            <th>Gestor</th><th>Semana</th><th>A realizar</th><th>Realizadas</th><th>% Cobertura</th><th>Última llamada</th>
+          </tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+
+      <div id="kpiV2ViewPend" style="display:none; max-height:50vh; overflow:auto; border-radius:12px; border:1px solid #e5e7eb;">
+        <table class="table" id="kpiV2Pend">
+          <thead class="table-light" style="position:sticky; top:0;"><tr>
+            <th>Gestor</th><th>Semana</th><th>Cod</th><th>Cliente</th><th>Vendedor</th>
+          </tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+
+      <div id="kpiV2ViewReal" style="display:none; max-height:50vh; overflow:auto; border-radius:12px; border:1px solid #e5e7eb;">
+        <table class="table" id="kpiV2Real">
+          <thead class="table-light" style="position:sticky; top:0;"><tr>
+            <th>Fecha/Hora</th><th>Semana</th><th>Cliente</th><th>Cod</th><th>Vendedor</th><th>Gestor</th><th>Resultado</th>
+          </tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Header button to open KPI -->
+<button id="btnKPIv2" class="btn btn-light" style="position:fixed; right:16px; top:14px; z-index:9997;">📈 KPI v2</button>
+
+
+<script>
+(function(){
+  // ---------- Legend typography override (robust) ----------
+  function applyLegendStyle(){
+    const roots = document.querySelectorAll('.legend, #legend, .leyenda, .leyenda-container');
+    roots.forEach(root=>{
+      root.querySelectorAll('.chip,.badge,.tag,button,span').forEach(el=>{
+        el.style.color='#111'; el.style.fontWeight='700';
+      });
+    });
+  }
+
+  // ---------- Map: center on Dominican Republic & try to show pins ----------
+  function centerMapRD(){
+    const target=[18.7357, -70.1627], zoom=7;
+    function tryCenter(){
+      // Find a Leaflet-like map instance from window (heuristic)
+      const candidates = Object.values(window).filter(v=> v && typeof v.setView==='function' && typeof v.addLayer==='function' && v._container);
+      if(candidates.length){
+        try { candidates[0].setView(target, zoom); } catch(e){}
+        return true;
+      }
+      return false;
+    }
+    let attempts = 0;
+    const t = setInterval(()=>{ if(tryCenter() || attempts++>40) clearInterval(t); }, 250);
+  }
+
+  // ---------- KPI v2 modal ----------
+  function norm(s){ return (s??'').toString().trim(); }
+  function lower(s){ return norm(s).normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase(); }
+  function csvEscape(v){ const s=String(v??''); return /[",\n]/.test(s)?('"'+s.replace(/"/g,'""')+'"'):s; }
+  const K = {
+    semana: ['N Semana','N_Semana','NSemana','SEMANA','Semana','semana'],
+    vendedor: ['vendedor','Vendedor','VENDEDOR'],
+    gestor: ['gestor_servicio','Gestor','GESTOR_SERVICIO','Gestor cartera','gestor_cartera','gcartera'],
+    cod: ['Cod Empresa','cod_empresa','codigo','Cod','ID'],
+    nombre: ['RazonSocial','Cliente','Nombre','razonsocial']
+  };
+  function getVal(row, keys){
+    for(const k of keys){ if(row && row[k]!=null && row[k]!=='' ) return row[k]; }
+    if(!row) return '';
+    const idx = Object.keys(row);
+    for(const k of keys){
+      const found = idx.find(h => lower(h)===lower(k));
+      if(found) return row[found];
+    }
+    return '';
+  }
+  function dataFromState(){
+    const ST = window.STATE || window.__STATE || {};
+    const calendario = Array.isArray(ST.calendario) ? ST.calendario : (Array.isArray(ST.Calendario)? ST.Calendario : []);
+    let calls=[]; try{ calls = JSON.parse(localStorage.getItem('llamadas_records')||'[]'); }catch(_){}
+    const callsCsv = Array.isArray(ST.calls)? ST.calls : (Array.isArray(ST.Calls)? ST.Calls : []);
+    if(Array.isArray(callsCsv) && callsCsv.length) calls = calls.concat(callsCsv);
+    return {calendario, calls};
+  }
+  function ensureFilterOptions(){
+    const {calendario, calls} = dataFromState();
+    const semanas = [...new Set(calendario.map(r=> norm(getVal(r,K.semana))).filter(Boolean))].sort((a,b)=> (Number(a)||0)-(Number(b)||0));
+    const vendedores = [...new Set(calendario.map(r=> norm(getVal(r,K.vendedor))).filter(Boolean))].sort((a,b)=> String(a).localeCompare(String(b),'es',{numeric:true}));
+    const gestores = [...new Set(calendario.map(r=> norm(getVal(r,K.gestor))).filter(Boolean))].sort((a,b)=> String(a).localeCompare(String(b),'es',{numeric:true}));
+    const sW = document.getElementById('kpiV2Semana'); if(sW && sW.children.length<=1){ sW.innerHTML = '<option value=\"\">Todas</option>'+ semanas.map(v=>`<option>${v}</option>`).join(''); }
+    const sV = document.getElementById('kpiV2Vendedor'); if(sV && sV.children.length<=1){ sV.innerHTML = '<option value=\"\">Todos</option>'+ vendedores.map(v=>`<option>${v}</option>`).join(''); }
+    const sG = document.getElementById('kpiV2Gestor'); if(sG && sG.children.length<=1){ sG.innerHTML = '<option value=\"\">Todos</option>'+ gestores.map(v=>`<option>${v}</option>`).join(''); }
+  }
+  function filters(){
+    return {
+      semana: document.getElementById('kpiV2Semana')?.value || '',
+      vendedor: document.getElementById('kpiV2Vendedor')?.value || '',
+      gestor: document.getElementById('kpiV2Gestor')?.value || '',
+      search: lower(document.getElementById('kpiV2Buscar')?.value || '')
+    };
+  }
+  function filtered(){
+    const f = filters();
+    const {calendario, calls} = dataFromState();
+    const cal = calendario.filter(r=>{
+      const sem = norm(getVal(r,K.semana));
+      const ven = norm(getVal(r,K.vendedor));
+      const ges = norm(getVal(r,K.gestor));
+      const cod = norm(getVal(r,K.cod));
+      const cli = norm(getVal(r,K.nombre));
+      if(f.semana && sem!==f.semana) return false;
+      if(f.vendedor && ven!==f.vendedor) return false;
+      if(f.gestor && ges!==f.gestor) return false;
+      if(f.search && !(lower(cli).includes(f.search)||lower(cod).includes(f.search))) return false;
+      return true;
+    });
+    const done = calls.filter(r=>{
+      const wk = String(r.semana||'');
+      const ven = norm(r.vendedor||'');
+      const ges = norm(r.gestor_servicio||r.gestor||'');
+      if(f.semana && wk!==f.semana) return false;
+      if(f.vendedor && ven!==f.vendedor) return false;
+      if(f.gestor && ges!==f.gestor) return false;
+      return true;
+    });
+    return {cal, done};
+  }
+  function compute(){
+    const {cal, done} = filtered();
+    const key = (g,s)=> g+'|'+s;
+    const plan = new Map(), real = new Map(), last = new Map();
+    cal.forEach(r=>{ const g=norm(getVal(r,K.gestor)); const s=norm(getVal(r,K.semana)); const k=key(g,s); plan.set(k,(plan.get(k)||0)+1); });
+    done.forEach(d=>{ const g=norm(d.gestor_servicio||d.gestor||''); const s=String(d.semana||''); const k=key(g,s);
+      real.set(k,(real.get(k)||0)+1); const fh=d.fecha_hora||d.fecha||''; const cur=last.get(k); if(fh && (!cur||new Date(fh)>new Date(cur))) last.set(k,fh);
+    });
+    const keys = new Set([...plan.keys(), ...real.keys()]);
+    const rows = Array.from(keys).map(k=>{
+      const [gestor, semana] = k.split('|'); const a=plan.get(k)||0; const r=real.get(k)||0; const pct=a? Math.round(r*100/a) : (r?100:0);
+      return {gestor, semana, a, r, pct, last:last.get(k)||''};
+    }).sort((x,y)=> x.gestor.localeCompare(y.gestor,'es',{numeric:true}) || (Number(x.semana)-Number(y.semana)));
+    const totA = rows.reduce((s,x)=>s+x.a,0), totR = rows.reduce((s,x)=>s+x.r,0);
+    const totP = totA? Math.round(totR*100/totA) : (totR?100:0);
+    return {rows, totA, totR, totP};
+  }
+  function buildPend(){
+    const {cal} = filtered();
+    const out=[]; cal.forEach(r=> out.push({
+      gestor:norm(getVal(r,K.gestor)), semana:norm(getVal(r,K.semana)),
+      cod:norm(getVal(r,K.cod)), cliente:norm(getVal(r,K.nombre)),
+      vendedor:norm(getVal(r,K.vendedor))
+    }));
+    out.sort((a,b)=> a.gestor.localeCompare(b.gestor,'es',{numeric:true})||a.semana.localeCompare(b.semana,'es',{numeric:true})||a.cliente.localeCompare(b.cliente,'es',{numeric:true}));
+    return out;
+  }
+  function buildReal(){
+    const {done} = filtered();
+    const out = done.slice().sort((a,b)=> new Date(b.fecha_hora||0)-new Date(a.fecha_hora||0));
+    return out.map(d=>({ fecha:d.fecha_hora||'', semana:String(d.semana||''), cliente:d.cliente||'', cod:d.cod_empresa||'', vendedor:d.vendedor||'', gestor:d.gestor_servicio||d.gestor||'', res:d.resultado||'' }));
+  }
+  function render(){
+    ensureFilterOptions();
+    const R = compute();
+    document.getElementById('kpiV2Plan').textContent = R.totA;
+    document.getElementById('kpiV2Done').textContent = R.totR;
+    document.getElementById('kpiV2Cov').textContent  = R.totP + '%';
+    document.getElementById('kpiV2Info').textContent = '';
+    const tb = document.querySelector('#kpiV2Tbl tbody');
+    tb.innerHTML = R.rows.map(r=>`<tr>
+      <td>${r.gestor||''}</td><td>${r.semana||''}</td><td>${r.a}</td><td>${r.r}</td><td>${r.pct}%</td><td>${r.last? new Date(r.last).toLocaleString():'-'}</td>
+    </tr>`).join('');
+    // Pendientes
+    const p = buildPend(); const tbP = document.querySelector('#kpiV2Pend tbody');
+    tbP.innerHTML = p.map(r=>`<tr><td>${r.gestor}</td><td>${r.semana}</td><td>${r.cod}</td><td>${r.cliente}</td><td>${r.vendedor}</td></tr>`).join('');
+    // Realizadas
+    const rr = buildReal(); const tbR = document.querySelector('#kpiV2Real tbody');
+    tbR.innerHTML = rr.map(r=>`<tr><td>${r.fecha? new Date(r.fecha).toLocaleString():''}</td><td>${r.semana}</td><td>${r.cliente}</td><td>${r.cod}</td><td>${r.vendedor}</td><td>${r.gestor}</td><td>${r.res}</td></tr>`).join('');
+  }
+  function exportCSV(){
+    const R = compute();
+    const rows = [['Gestor','Semana','A realizar','Realizadas','% Cobertura','Última llamada']]
+      .concat(R.rows.map(r=>[r.gestor,r.semana,r.a,r.r,(r.pct+'%'), r.last? new Date(r.last).toLocaleString(): '-' ]));
+    const csv = rows.map(r=> r.map(csvEscape).join(',')).join('\\n');
+    const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8;'})); a.download='kpi_resumen_semanal.csv'; a.click(); URL.revokeObjectURL(a.href);
+  }
+  function showTab(which){
+    document.getElementById('kpiV2ViewResumen').style.display = which==='resumen'?'block':'none';
+    document.getElementById('kpiV2ViewPend').style.display    = which==='pend'   ?'block':'none';
+    document.getElementById('kpiV2ViewReal').style.display    = which==='real'   ?'block':'none';
+  }
+  function openModal(){ document.getElementById('kpiV2Modal').style.display='block'; render(); }
+  function closeModal(){ document.getElementById('kpiV2Modal').style.display='none'; }
+
+  function wire(){
+    // Header button to open
+    const opener = document.getElementById('btnKPIv2'); if(opener) opener.addEventListener('click', openModal);
+    // Close & Export
+    document.getElementById('kpiV2Close')?.addEventListener('click', closeModal);
+    document.getElementById('kpiV2Export')?.addEventListener('click', exportCSV);
+    // Filters
+    ['kpiV2Semana','kpiV2Vendedor','kpiV2Gestor'].forEach(id=>{
+      const el=document.getElementById(id); if(el) el.addEventListener('change', render);
+    });
+    const inp = document.getElementById('kpiV2Buscar'); if(inp){ let t; inp.addEventListener('input', ()=>{ clearTimeout(t); t=setTimeout(render,150); }); }
+    // Tabs
+    document.getElementById('kpiV2TabResumen')?.addEventListener('click', ()=> showTab('resumen'));
+    document.getElementById('kpiV2TabPend')?.addEventListener('click', ()=> showTab('pend'));
+    document.getElementById('kpiV2TabReal')?.addEventListener('click', ()=> showTab('real'));
+    // Legend and map tweaks after load
+    setTimeout(applyLegendStyle, 400);
+    setTimeout(centerMapRD, 600);
+  }
+
+  if(document.readyState==='complete' || document.readyState==='interactive'){ setTimeout(wire, 60); }
+  else { document.addEventListener('DOMContentLoaded', ()=> setTimeout(wire,60)); }
+})();
+</script>
+
 </body>
 </html>
