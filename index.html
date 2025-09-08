@@ -674,7 +674,7 @@ function vendorExcludedSet(){ const arr = CONFIG.excluirVendedores || []; return
 function isVendorExcluded(name){ if(!name) return false; return vendorExcludedSet().has(normName(name)); }
 
 function buildJoined(){
-  const idxCal = {}; const getDia = r => r['Dia'] ?? r['Día'] ?? r['dia'] ?? r['DIA']; const getSem = r => r['N Semana'] ?? r['N_Semana'] ?? r['NSemana'] ?? r['Semana'] ?? r['SEMANA'] ?? r['semana'];
+  const idxCal = {}; const getDia = r => r['Dia'] ?? r['Día'] ?? r['dia'] ?? r['DIA']; const getSem = r => r['Semana'] ?? r['SEMANA'] ?? r['semana'];
   STATE.calendario.forEach(r=>{ const key = norm(pick(r, JOIN_KEYS)); if(!key) return; if(!idxCal[key]) idxCal[key]=r; });
   STATE.joined = STATE.clientes.map(c=>{
     const key = norm(pick(c, JOIN_KEYS)); const m = idxCal[key]; const semana = m ? (getSem(m) || 'Por asignar') : 'Por asignar'; const dia = m ? (getDia(m) || 'Por asignar') : 'Por asignar';
@@ -2891,7 +2891,7 @@ document.addEventListener('click', (ev)=>{
     const cal = Array.isArray(STATE.calendario)? STATE.calendario : [];
     if(cal.length){
       const get = (r,klist)=>{ for(const k of klist){ if(r[k]!=null && r[k]!=='' ) return r[k]; } const m={}; for(const k in r){ m[k.toLowerCase().replace(/\s|_/g,'')]=r[k]; } for(const k of klist){ const nk=k.toLowerCase().replace(/\s|_/g,''); if(m[nk]!=null && m[nk]!=='' ) return m[nk]; } return ''; };
-      const weeks = cal.map(r=> String(get(r,['N Semana','N_Semana','NSemana','SEMANA','Semana','semana'])||'').trim()).filter(Boolean);
+      const weeks = cal.map(r=> String(get(r,['SEMANA','Semana','semana'])||'').trim()).filter(Boolean);
       const semanas = uniqueSorted(weeks.map(w=>{ const n=Number(String(w).replace(/[^0-9]/g,'')); return (isFinite(n)&&n>=1) ? (n<=4? String(n): String(((n-1)%4)+1)) : String(w); }));
       const vendedores = uniqueSorted(cal.map(r=> get(r,['vendedor','Vendedor','VENDEDOR']) ).filter(v=>!isVendorExcluded(v)));
       const gestores   = uniqueSorted(cal.map(r=> get(r,['gestor_servicio','Gestor','GESTOR_SERVICIO']) ));
@@ -2986,14 +2986,9 @@ document.addEventListener('click', (ev)=>{
     const fVend = val('rwVendedor');
     const fGes = val('rwGestor');
 
-    const planRows = (Array.isArray(STATE.calendario)? STATE.calendario : []).map(r=>{
-      const semana = r['N Semana']||r['N_Semana']||r['NSemana']||r['SEMANA']||r['Semana']||r['semana']||'';
-      const vendedor = r['vendedor']||r['Vendedor']||r['VENDEDOR']||'';
-      const gestor = r['gestor_servicio']||r['Gestor']||r['GESTOR_SERVICIO']||r['Gestor cartera']||r['gestor_cartera']||r['gcartera']||'';
-      return { semana, vendedor, gestor };
-    }).filter(x=>{
+    const planRows = (STATE.joined || []).filter(x=>{
       if(isVendorExcluded(x.vendedor)) return false;
-      if(fSem && String(mapPlanWeek(x.semana)) !== String(fSem)) return false;
+      if(fSem && String(x.semana) !== String(fSem)) return false;
       if(fVend && String(x.vendedor) !== String(fVend)) return false;
       if(fGes && String(x.gestor) !== String(fGes)) return false;
       return true;
@@ -3788,5 +3783,278 @@ document.addEventListener('click', (ev)=>{
 })();
 
 </script>
+
+<!-- KPI v2 Overlay (non-intrusive) -->
+<div id="kpiV2Overlay" style="position:fixed;inset:0;display:none;background:rgba(0,0,0,.35);z-index:9998;">
+  <div style="position:absolute;left:50%;top:52%;transform:translate(-50%,-50%);width:min(1100px,92vw);max-height:86vh;overflow:auto;background:#fff;border-radius:16px;box-shadow:0 10px 40px rgba(0,0,0,.25);padding:18px 18px 24px;">
+    <div style="display:flex;align-items:center;gap:8px;justify-content:space-between;">
+      <h3 style="margin:0;font-weight:700;">📈 KPI — Resumen Semanal (v2)</h3>
+      <button id="kpiV2Close" class="btn btn-light">← Volver</button>
+    </div>
+
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin:12px 0 8px;">
+      <div class="card" style="padding:14px;border-radius:12px;">
+        <div style="font-size:12px;opacity:.7;">A realizar (Itinerarios)</div>
+        <div id="kpiV2Plan" style="font-size:32px;font-weight:800;">0</div>
+      </div>
+      <div class="card" style="padding:14px;border-radius:12px;">
+        <div style="font-size:12px;opacity:.7;">Realizadas (Llamadas)</div>
+        <div id="kpiV2Done" style="font-size:32px;font-weight:800;">0</div>
+      </div>
+      <div class="card" style="padding:14px;border-radius:12px;">
+        <div style="font-size:12px;opacity:.7;">% Cobertura</div>
+        <div id="kpiV2Cov" style="font-size:32px;font-weight:800;">0%</div>
+      </div>
+    </div>
+
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin:6px 0 12px;">
+      <label>Semana
+        <select id="kpiV2Semana" class="form-select" style="min-width:130px;"></select>
+      </label>
+      <label>Vendedor
+        <select id="kpiV2Vendedor" class="form-select" style="min-width:180px;"></select>
+      </label>
+      <label>Gestor
+        <select id="kpiV2Gestor" class="form-select" style="min-width:180px;"></select>
+      </label>
+      <button id="kpiV2Export" class="btn btn-outline-secondary" style="margin-left:auto;">⬇ Exportar CSV</button>
+    </div>
+
+    <div class="card" style="padding:10px;border-radius:12px;margin-bottom:8px;">
+      <div style="font-weight:700;margin:6px 0 8px;">Detalle de clientes — Itinerario</div>
+      <div style="max-height:34vh;overflow:auto;">
+        <table class="table" id="kpiV2Clients">
+          <thead><tr>
+            <th>Cliente</th><th>Vendedor</th><th>Gestor</th><th>Semana</th><th>Realizadas</th><th>Última llamada</th>
+          </tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="card" style="padding:10px;border-radius:12px;">
+      <div style="font-weight:700;margin:6px 0 8px;">Resumen — Gestor x Semana</div>
+      <table class="table" id="kpiV2GS">
+        <thead><tr>
+          <th>Gestor</th><th>Semana</th><th>A realizar</th><th>Realizadas</th><th>% Cobertura</th><th>Última llamada</th>
+        </tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- Floating button to open KPI v2 -->
+<button id="openKpiV2" title="KPI v2" style="position:fixed;right:16px;bottom:16px;z-index:9999;border:0;background:#111;color:#fff;padding:10px 14px;border-radius:999px;box-shadow:0 6px 22px rgba(0,0,0,.3);font-weight:700;">📈 KPI v2</button>
+
+
+<script>
+// === KPI v2 — 100% desde Calendario (plan) y Llamadas (done) por Gestor+Semana ===
+(function(){
+  function nz(x){ return Number(x)||0; }
+  function pct(n, d){ return (d>0)? Math.round(n*100/d)+'%' : '0%'; }
+  function norm(s){ return (s??'').toString().trim(); }
+
+  function pickSemana(r){
+    return norm(r['N Semana'] ?? r['N_Semana'] ?? r['NSemana'] ?? r['SEMANA'] ?? r['Semana'] ?? r['semana'] ?? '');
+  }
+  function pickGestor(r){
+    return norm(r['gestor_servicio'] ?? r['Gestor'] ?? r['GESTOR_SERVICIO'] ?? r['Gestor cartera'] ?? r['gestor_cartera'] ?? r['gcartera'] ?? '');
+  }
+  function pickVendedor(r){ return norm(r['vendedor'] ?? r['Vendedor'] ?? r['VENDEDOR'] ?? ''); }
+  function pickCliente(r){ return norm(r['RazonSocial'] ?? r['cliente'] ?? r['Cliente'] ?? ''); }
+  function mapPlanWeek(w){
+    // Si llegan semanas grandes (ej. 32,33,34,35) las mapeamos a 1..4 de la misma forma que el resto de la app
+    const n = Number(w)||0;
+    if(n<=4) return String(n);
+    const bucket = ((n-1)%4)+1;
+    return String(bucket);
+  }
+
+  function getFilters(){
+    const semana = document.getElementById('kpiV2Semana')?.value || '';
+    const vendedor = document.getElementById('kpiV2Vendedor')?.value || '';
+    const gestor = document.getElementById('kpiV2Gestor')?.value || '';
+    return { semana, vendedor, gestor };
+  }
+
+  function loadPlan(){
+    const cal = Array.isArray(window.STATE?.calendario) ? window.STATE.calendario : [];
+    return cal.map(r=> ({
+      semana: mapPlanWeek(pickSemana(r)),
+      gestor: pickGestor(r),
+      vendedor: pickVendedor(r),
+      cliente: pickCliente(r),
+    }));
+  }
+
+  function loadDone(){
+    const rows = (typeof window.loadAllCallRecords === 'function') ? window.loadAllCallRecords() : [];
+    return rows.map(r=>({
+      semana: String(r.semana||''),
+      gestor: norm(r.gestor_servicio||r.gestor||''),
+      vendedor: norm(r.vendedor||''),
+      cliente: norm(r.cliente||''),
+      fecha_hora: norm(r.fecha_hora||''),
+    }));
+  }
+
+  function ensureFilterOptions(){
+    const plan = loadPlan();
+    const vendSel = document.getElementById('kpiV2Vendedor');
+    const gesSel  = document.getElementById('kpiV2Gestor');
+    const semSel  = document.getElementById('kpiV2Semana');
+
+    const vendors = Array.from(new Set(plan.map(p=>p.vendedor).filter(Boolean))).sort((a,b)=>a.localeCompare(b,'es',{numeric:true}));
+    const gestors = Array.from(new Set(plan.map(p=>p.gestor).filter(Boolean))).sort((a,b)=>a.localeCompare(b,'es',{numeric:true}));
+    const semanas = ['','1','2','3','4']; // controlado por mapPlanWeek
+
+    if(semSel && !semSel.dataset.ready){
+      semSel.innerHTML = semanas.map(v=>`<option value="${v}">${v? v : 'Todas'}</option>`).join('');
+      semSel.dataset.ready='1';
+    }
+    if(vendSel && !vendSel.dataset.ready){
+      vendSel.innerHTML = ['<option value="">Todos</option>'].concat(vendors.map(v=>`<option>${v}</option>`)).join('');
+      vendSel.dataset.ready='1';
+    }
+    if(gesSel && !gesSel.dataset.ready){
+      gesSel.innerHTML = ['<option value="">Todos</option>'].concat(gestors.map(v=>`<option>${v}</option>`)).join('');
+      gesSel.dataset.ready='1';
+    }
+  }
+
+  function applyFilters(rows){
+    const {semana, vendedor, gestor} = getFilters();
+    return rows.filter(r=>{
+      if(semana && r.semana!==semana) return false;
+      if(vendedor && r.vendedor!==vendedor) return false;
+      if(gestor && r.gestor!==gestor) return false;
+      return true;
+    });
+  }
+
+  function compute(){
+    const plan = applyFilters(loadPlan());
+    const done = applyFilters(loadDone());
+
+    // KPIs
+    const planTot = plan.length;
+    const doneTot = done.length;
+    const covTot  = pct(doneTot, planTot);
+
+    // Resumen por Gestor+Semana
+    const key = (g,s)=>g+'||'+s;
+    const planBy = new Map(), doneBy = new Map(), lastBy = new Map();
+    plan.forEach(p=>{
+      const k = key(p.gestor, p.semana);
+      planBy.set(k, (planBy.get(k)||0)+1);
+    });
+    done.forEach(d=>{
+      const k = key(d.gestor, d.semana);
+      doneBy.set(k, (doneBy.get(k)||0)+1);
+      if(d.fecha_hora){
+        const cur = lastBy.get(k);
+        if(!cur || new Date(d.fecha_hora) > new Date(cur)) lastBy.set(k, d.fecha_hora);
+      }
+    });
+
+    const keys = new Set([...planBy.keys(), ...doneBy.keys()]);
+    const resumen = Array.from(keys).map(k=>{
+      const [gestor, semana] = k.split('||');
+      const a = planBy.get(k)||0;
+      const r = doneBy.get(k)||0;
+      return {gestor, semana, plan:a, done:r, cov: pct(r,a), last:lastBy.get(k)||''};
+    }).sort((a,b)=> a.gestor.localeCompare(b.gestor,'es',{numeric:true}) || (Number(a.semana)-Number(b.semana)));
+
+    // Detalle clientes (plan cruzado por cliente+semana)
+    const doneByCliente = new Map(), lastByCliente = new Map();
+    done.forEach(d=>{
+      const k = d.cliente+'||'+d.semana;
+      doneByCliente.set(k, (doneByCliente.get(k)||0)+1);
+      if(d.fecha_hora){
+        const cur = lastByCliente.get(k);
+        if(!cur || new Date(d.fecha_hora) > new Date(cur)) lastByCliente.set(k, d.fecha_hora);
+      }
+    });
+    const detalle = plan.map(p=>{
+      const k = p.cliente+'||'+p.semana;
+      return { cliente:p.cliente, vendedor:p.vendedor, gestor:p.gestor, semana:p.semana,
+               realizadas: (doneByCliente.get(k)||0), last:(lastByCliente.get(k)||'') };
+    }).sort((a,b)=> a.cliente.localeCompare(b.cliente,'es',{numeric:true}));
+
+    return { planTot, doneTot, covTot, resumen, detalle };
+  }
+
+  function render(){
+    ensureFilterOptions();
+    const R = compute();
+
+    // KPIs
+    const map = {'kpiV2Plan':R.planTot, 'kpiV2Done':R.doneTot, 'kpiV2Cov':R.covTot};
+    Object.entries(map).forEach(([id,val])=>{ const el=document.getElementById(id); if(el) el.textContent = val; });
+
+    // Tabla Resumen
+    const tb = document.querySelector('#kpiV2GS tbody');
+    if(tb){
+      tb.innerHTML='';
+      R.resumen.forEach(r=>{
+        const tr = document.createElement('tr');
+        tr.innerHTML = `<td>${r.gestor||''}</td><td>${r.semana||''}</td><td>${r.plan||0}</td><td>${r.done||0}</td><td>${r.cov||'0%'}</td><td>${r.last||''}</td>`;
+        tb.appendChild(tr);
+      });
+    }
+    // Detalle clientes
+    const cb = document.querySelector('#kpiV2Clients tbody');
+    if(cb){
+      cb.innerHTML='';
+      R.detalle.forEach(r=>{
+        const tr = document.createElement('tr');
+        tr.innerHTML = `<td>${r.cliente||''}</td><td>${r.vendedor||''}</td><td>${r.gestor||''}</td><td>${r.semana||''}</td><td>${r.realizadas||0}</td><td>${r.last||''}</td>`;
+        cb.appendChild(tr);
+      });
+    }
+  }
+
+  function exportCSV(){
+    const R = compute();
+    const rows = [['Gestor','Semana','A realizar','Realizadas','% Cobertura','Última llamada']]
+      .concat(R.resumen.map(r=>[r.gestor,r.semana,r.plan,r.done,r.cov,r.last]));
+    const csv = rows.map(r=>r.map(v=>{
+      const s = String(v??''); return /[",\n]/.test(s) ? `"${s.replace(/"/g,'""')}"` : s;
+    }).join(',')).join('\n');
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8;'}));
+    a.download = 'kpi_v2_resumen.csv';
+    a.click();
+    URL.revokeObjectURL(a.href);
+  }
+
+  function open(){ document.getElementById('kpiV2Overlay').style.display='block'; render(); }
+  function close(){ document.getElementById('kpiV2Overlay').style.display='none'; }
+
+  function wire(){
+    const btn = document.getElementById('openKpiV2');
+    const over= document.getElementById('kpiV2Overlay');
+    const back= document.getElementById('kpiV2Close');
+    if(btn) btn.addEventListener('click', open);
+    if(back) back.addEventListener('click', close);
+    ['kpiV2Semana','kpiV2Vendedor','kpiV2Gestor'].forEach(id=>{
+      const el = document.getElementById(id);
+      if(el) el.addEventListener('change', render);
+    });
+    const ex = document.getElementById('kpiV2Export');
+    if(ex) ex.addEventListener('click', exportCSV);
+    // Cerrar haciendo click fuera
+    if(over) over.addEventListener('click', (e)=>{ if(e.target===over) close(); });
+  }
+
+  if(document.readyState === 'complete' || document.readyState === 'interactive'){
+    setTimeout(()=>{ wire(); }, 80);
+  }else{
+    document.addEventListener('DOMContentLoaded', ()=> setTimeout(()=>{ wire(); }, 80));
+  }
+})();
+</script>
+
 </body>
 </html>
