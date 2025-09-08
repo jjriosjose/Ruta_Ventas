@@ -3623,6 +3623,8 @@ document.addEventListener('click', (ev)=>{
   }
 
   function hookResumenEvents(){
+    const container = document.getElementById('screenResumenSem');
+    if(container){ container.addEventListener('change', (e)=>{ if(['rwSemana','rwVendedor','rwGestor'].includes(e.target.id)) recomputeResumen(); }); }
     const ids = ['rwSemana','rwVendedor','rwGestor'];
     ids.forEach(id=>{ const el=q(id); if(el){ el.addEventListener('change', ()=>recomputeResumen()); }});
     const btnExp = q('rwExport'); if(btnExp){ btnExp.addEventListener('click', ()=>{ const agg=recomputeResumen(); exportResumenCSV(agg); }); }
@@ -3659,6 +3661,49 @@ document.addEventListener('click', (ev)=>{
     const _rz_obs = new MutationObserver(()=> setTimeout(tryAutoRecompute, 30));
     _rz_obs.observe(_rz_target, {attributes:true, attributeFilter:['class','style']});
   }
+
+
+  // ---- Auto-detect datasets in STATE (fallback if names differ) ----
+  function __rz_isObj(o){ return o && typeof o==='object' && !Array.isArray(o); }
+  function __rz_hasKeyLike(row, candidates){
+    const keys = Object.keys(row||{}).map(k=>k.toLowerCase().replace(/\s|_/g,''));
+    return candidates.some(c=> keys.includes(c.toLowerCase().replace(/\s|_/g,'')) );
+  }
+  function __rz_scanForArray(st, type){
+    // type: 'cal' or 'calls'
+    const arrs = [];
+    const pushIf = (a)=>{ if(Array.isArray(a) && a.length && typeof a[0]==='object') arrs.push(a); };
+    // direct
+    for(const k in st){ pushIf(st[k]); if(__rz_isObj(st[k])){ for(const kk in st[k]) pushIf(st[k][kk]); } }
+    // flatten and score
+    let best = null, scoreBest = -1;
+    for(const a of arrs){
+      const row = a[0]||{};
+      let score = 0;
+      if(type==='cal'){
+        if(__rz_hasKeyLike(row,['semana'])) score += 3;
+        if(__rz_hasKeyLike(row,['gestorservicio','gestor','gestor_servicio'])) score += 3;
+        if(__rz_hasKeyLike(row,['vendedor'])) score += 2;
+      }else{
+        if(__rz_hasKeyLike(row,['fecha','fechahora','fecha_hora'])) score += 3;
+        if(__rz_hasKeyLike(row,['gestor','gestorservicio','gestor_servicio'])) score += 3;
+        if(__rz_hasKeyLike(row,['vendedor'])) score += 2;
+      }
+      if(score > scoreBest){ scoreBest = score; best = a; }
+    }
+    return best || [];
+  }
+  window.__RZ_getStateRefs = function(){
+    const st = ST();
+    // explicit first
+    const calendario = Array.isArray(st.calendario)? st.calendario :
+                       Array.isArray(st.Calendario)? st.Calendario :
+                       __rz_scanForArray(st,'cal');
+    const calls      = Array.isArray(st.calls)? st.calls :
+                       Array.isArray(st.Calls)? st.Calls :
+                       __rz_scanForArray(st,'calls');
+    return {calendario, calls};
+  };
 
 })(); // ===== end RESUMEN KPI LOGIC =====
 
