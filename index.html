@@ -674,7 +674,7 @@ function vendorExcludedSet(){ const arr = CONFIG.excluirVendedores || []; return
 function isVendorExcluded(name){ if(!name) return false; return vendorExcludedSet().has(normName(name)); }
 
 function buildJoined(){
-  const idxCal = {}; const getDia = r => r['Dia'] ?? r['Día'] ?? r['dia'] ?? r['DIA']; const getSem = r => r['Semana'] ?? r['SEMANA'] ?? r['semana'];
+  const idxCal = {}; const getDia = r => r['Dia'] ?? r['Día'] ?? r['dia'] ?? r['DIA']; const getSem = r => r['N Semana'] ?? r['N_Semana'] ?? r['NSemana'] ?? r['Semana'] ?? r['SEMANA'] ?? r['semana'];
   STATE.calendario.forEach(r=>{ const key = norm(pick(r, JOIN_KEYS)); if(!key) return; if(!idxCal[key]) idxCal[key]=r; });
   STATE.joined = STATE.clientes.map(c=>{
     const key = norm(pick(c, JOIN_KEYS)); const m = idxCal[key]; const semana = m ? (getSem(m) || 'Por asignar') : 'Por asignar'; const dia = m ? (getDia(m) || 'Por asignar') : 'Por asignar';
@@ -2891,7 +2891,7 @@ document.addEventListener('click', (ev)=>{
     const cal = Array.isArray(STATE.calendario)? STATE.calendario : [];
     if(cal.length){
       const get = (r,klist)=>{ for(const k of klist){ if(r[k]!=null && r[k]!=='' ) return r[k]; } const m={}; for(const k in r){ m[k.toLowerCase().replace(/\s|_/g,'')]=r[k]; } for(const k of klist){ const nk=k.toLowerCase().replace(/\s|_/g,''); if(m[nk]!=null && m[nk]!=='' ) return m[nk]; } return ''; };
-      const weeks = cal.map(r=> String(get(r,['SEMANA','Semana','semana'])||'').trim()).filter(Boolean);
+      const weeks = cal.map(r=> String(get(r,['N Semana','N_Semana','NSemana','SEMANA','Semana','semana'])||'').trim()).filter(Boolean);
       const semanas = uniqueSorted(weeks.map(w=>{ const n=Number(String(w).replace(/[^0-9]/g,'')); return (isFinite(n)&&n>=1) ? (n<=4? String(n): String(((n-1)%4)+1)) : String(w); }));
       const vendedores = uniqueSorted(cal.map(r=> get(r,['vendedor','Vendedor','VENDEDOR']) ).filter(v=>!isVendorExcluded(v)));
       const gestores   = uniqueSorted(cal.map(r=> get(r,['gestor_servicio','Gestor','GESTOR_SERVICIO']) ));
@@ -2986,9 +2986,14 @@ document.addEventListener('click', (ev)=>{
     const fVend = val('rwVendedor');
     const fGes = val('rwGestor');
 
-    const planRows = (STATE.joined || []).filter(x=>{
+    const planRows = (Array.isArray(STATE.calendario)? STATE.calendario : []).map(r=>{
+      const semana = r['N Semana']||r['N_Semana']||r['NSemana']||r['SEMANA']||r['Semana']||r['semana']||'';
+      const vendedor = r['vendedor']||r['Vendedor']||r['VENDEDOR']||'';
+      const gestor = r['gestor_servicio']||r['Gestor']||r['GESTOR_SERVICIO']||r['Gestor cartera']||r['gestor_cartera']||r['gcartera']||'';
+      return { semana, vendedor, gestor };
+    }).filter(x=>{
       if(isVendorExcluded(x.vendedor)) return false;
-      if(fSem && String(x.semana) !== String(fSem)) return false;
+      if(fSem && String(mapPlanWeek(x.semana)) !== String(fSem)) return false;
       if(fVend && String(x.vendedor) !== String(fVend)) return false;
       if(fGes && String(x.gestor) !== String(fGes)) return false;
       return true;
