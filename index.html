@@ -1,3 +1,11 @@
+<!--
+Changelog (Resumen Semanal v1.0) - 2025-09-07
+- Nuevo módulo JS: RESUMEN_KPI para calcular KPI A realizar, Realizadas y % Cobertura.
+- Funciones nuevas: mapSemana4, normName, normKey, parseDateLoose, weekOfMonth14, getSemanaFromRow,
+  fillResumenFilters, computeResumenAggregates, renderResumenKpisAndChips, renderResumenTable,
+  exportResumenCSV, hookResumenEvents, recomputeResumen.
+- Actualizaciones mínimas: sin cambios en navegación ni estilos; solo lógica del Resumen.
+-->
 <!DOCTYPE html>
 <html lang="es">
 <head>
@@ -3262,5 +3270,377 @@ document.addEventListener('click', (ev)=>{
 })();
 </script>
 
+
+<script id="kpi-fix-resumen">
+(function(){
+  // --- small helpers (non-invasive) ---
+  const $ = (s, r=document)=>r.querySelector(s);
+  const $$= (s, r=document)=>Array.from(r.querySelectorAll(s));
+  function normName(s){ return (s||'').toString().normalize('NFD').replace(/[\u0300-\u036f]/g,'').trim().toLowerCase(); }
+  function val(id){ const el=document.getElementById(id); return el? el.value : ''; }
+  function toDate(x){ if(!x) return null; const d=new Date(x); return isNaN(d)? null : d; }
+  function get(obj,keys){
+    for(const k of keys){ if(obj && obj[k]!=null && obj[k]!=='') return obj[k]; }
+    const flat={}; for(const k in obj){ flat[k.toLowerCase().replace(/\s|_/g,'')] = obj[k]; }
+    for(const k of keys){ const nk=k.toLowerCase().replace(/\s|_/g,''); if(flat[nk]!=null && flat[nk] !== '') return flat[nk]; }
+    return '';
+  }
+  function mapPlanWeek(w){
+    const n = Number(String(w||'').replace(/[^0-9]/g,''));
+    if(Number.isFinite(n) && n>=1){ return n<=4 ? String(n) : String(((n-1)%4)+1); }
+    return String(w||'');
+  }
+  function getCallWeek(rec){
+    const s = get(rec, ['Semana', 'N Semana', 'N° Semana', 'N_Semana', 'semana']);
+    if(s) return String(s).trim();
+    const d = toDate(get(rec, ['Fecha/Hora','Fecha','fecha','FechaHora','fecha_hora']));
+    if(d){
+      const first = new Date(d.getFullYear(), d.getMonth(), 1).getDay(); // 0=Dom..6=Sab
+      const firstIso = (first===0?7:first);
+      const week = Math.ceil( (d.getDate() + firstIso - 1) / 7 );
+      return String(Math.min(4, Math.max(1, week)));
+    }
+    return '';
+  }
+  function getCallVend(rec){ return get(rec, ['Vendedor','vendedor']); }
+  function getCallGes (rec){ return get(rec, ['gestor_servicio','Gestor','gestor']); }
+  function getCallFecha(rec){ return toDate(get(rec, ['Fecha/Hora','Fecha','fecha','FechaHora','fecha_hora'])); }
+
+  // ensure 1..4 weeks per gestor
+  function ensureFourWeeks(groups){
+    const gestores = new Set();
+    (groups instanceof Map ? Array.from(groups.values()) : groups).forEach(g=>gestores.add(g.gestor||''));
+    const out = new Map();
+    const key = (ges, sem)=>(ges||'')+'__'+String(sem);
+    gestores.forEach(ges=>{ [1,2,3,4].forEach(sem=> out.set(key(ges,sem), {gestor:ges||'', semana:String(sem), plan:0, done:0, last:null}) ); });
+    (groups instanceof Map ? Array.from(groups.values()) : groups).forEach(g=>{
+      const k = key(g.gestor||'', g.semana);
+      if(!out.has(k)) out.set(k,{gestor:g.gestor||'', semana:String(g.semana||''), plan:0, done:0, last:null});
+      const tgt = out.get(k);
+      tgt.plan += g.plan||0; tgt.done += g.done||0; if(g.last && (!tgt.last || g.last>tgt.last)) tgt.last=g.last;
+    });
+    return out;
+  }
+
+  function renderResumen(){
+    const STATE = window.STATE || {};
+    const cal   = Array.isArray(STATE.calendario)? STATE.calendario : [];
+    const calls = Array.isArray(STATE.calls) ? STATE.calls : [];
+
+    // current filters
+    const fSem  = val('rwSemana');
+    const fVend = val('rwVendedor');
+    const fGes  = val('rwGestor');
+    const fVendN = normName(fVend);
+    const fGesN  = normName(fGes);
+
+    const groups = new Map();
+    const key=(g,s)=> normName(g)+'__'+String(s||'');
+    const agg=(g,s)=>{ const k=key(g,s); if(!groups.has(k)) groups.set(k,{gestor:g||'', semana:String(s||''), plan:0, done:0, last:null}); return groups.get(k); };
+
+    // PLAN desde Calendario
+    cal.forEach(r=>{
+      const wk   = mapPlanWeek(r['SEMANA']||r['Semana']||r['semana']||'');
+      const vend = r['vendedor']||r['Vendedor']||r['VENDEDOR']||'';
+      const ges  = r['gestor_servicio']||r['Gestor']||r['GESTOR_SERVICIO']||'';
+      if(fSem && String(wk)!==String(fSem)) return;
+      if(fVend && normName(vend)!==fVendN)   return;
+      if(fGes && normName(ges)!==fGesN)      return;
+      agg(ges, wk).plan += 1;
+    });
+
+    // REALIZADAS desde llamadas
+    calls.forEach(c=>{
+      const wk   = getCallWeek(c) || '';
+      const vend = getCallVend(c) || '';
+      const ges  = getCallGes(c)  || '';
+      if(fSem && String(wk)!==String(fSem)) return;
+      if(fVend && normName(vend)!==fVendN)   return;
+      if(fGes && normName(ges)!==fGesN)      return;
+      const g = agg(ges, wk);
+      g.done += 1;
+      const d = getCallFecha(c);
+      if(d && (!g.last || d>g.last)) g.last = d;
+    });
+
+    // garantizar 4 semanas por gestor
+    const full = ensureFourWeeks(groups);
+    const rows = Array.from(full.values()).sort((a,b)=>{
+      return a.gestor===b.gestor
+        ? (Number(a.semana)||0)-(Number(b.semana)||0)
+        : String(a.gestor).localeCompare(String(b.gestor), 'es', {numeric:true});
+    });
+
+    // Totales y KPI
+    const totalPlan = rows.reduce((s,r)=>s+r.plan,0);
+    const totalDone = rows.reduce((s,r)=>s+r.done,0);
+    const cov = totalPlan ? Math.round((totalDone/totalPlan)*100) : 0;
+
+    const rwPlan = $('#rwPlan'), rwDone=$('#rwDone'), rwCov=$('#rwCov');
+    if(rwPlan) rwPlan.textContent = String(totalPlan);
+    if(rwDone) rwDone.textContent = String(totalDone);
+    if(rwCov)  rwCov.textContent  = cov + '%';
+
+    const k1=$('#kpiPlan'), k2=$('#kpiDone'), k3=$('#kpiCov');
+    if(k1) k1.textContent = String(totalPlan);
+    if(k2) k2.textContent = String(totalDone);
+    if(k3) k3.textContent = cov + '%';
+
+    // Render tabla
+    const tb = $('#rwTbl tbody');
+    if(tb){
+      tb.innerHTML='';
+      rows.forEach(r=>{
+        const last = r.last ? r.last.toLocaleString('es-ES') : '';
+        const tr = document.createElement('tr');
+        tr.innerHTML = `<td>${r.gestor||''}</td>
+                        <td>${r.semana||''}</td>
+                        <td>${r.plan}</td>
+                        <td>${r.done}</td>
+                        <td>${r.plan? Math.round((r.done/r.plan)*100) : 0}%</td>
+                        <td>${last}</td>`;
+        tb.appendChild(tr);
+      });
+    }
+  }
+
+  // Wire up once
+  function wire(){
+    ['rwSemana','rwVendedor','rwGestor'].forEach(id=>{
+      const el = document.getElementById(id);
+      if(el && !el.__kpi_wired){
+        el.__kpi_wired = true;
+        el.addEventListener('change', renderResumen);
+      }
+    });
+    // when the overlay opens (if body adds a class elsewhere), attempt re-render
+    document.addEventListener('click', function(ev){
+      if(ev.target && (ev.target.id === 'btnReporteResumen' || ev.target.closest && ev.target.closest('#btnReporteResumen'))){
+        setTimeout(renderResumen, 150);
+      }
+    }, true);
+    // initial
+    setTimeout(renderResumen, 350);
+  }
+
+  if(document.readyState === 'loading'){
+    document.addEventListener('DOMContentLoaded', wire);
+  } else {
+    wire();
+  }
+})();
+
+// ======== RESUMEN KPI LOGIC (append-only) ========
+(function(){
+  const RZ = {};
+  RZ.stripAccents = s => (s??'').toString().normalize('NFD').replace(/[̀-\u036f]/g,'');
+  RZ.normName = s => RZ.stripAccents(String(s||'')).trim().toLowerCase();
+  RZ.normKey = function(row, keys){
+    for(const k of keys){ if(row && row[k]!=null && row[k]!== '') return row[k]; }
+    if(!row) return '';
+    const m={}; for(const k in row){ m[k.toLowerCase().replace(/\s|_/g,'')] = row[k]; }
+    for(const k of keys){ const nk=k.toLowerCase().replace(/\s|_/g,''); if(nk in m) return m[nk]; }
+    return '';
+  };
+  RZ.parseDateLoose = function(v){
+    if(!v) return null;
+    const s = String(v).trim().replace('T',' ');
+    let d = new Date(s);
+    if(!isNaN(d)) return d;
+    const m = s.match(/^(\d{1,2})[\/-](\d{1,2})[\/-](\d{2,4})(?:\s+(\d{1,2}):(\d{2})(?::(\d{2}))?)?$/);
+    if(m){
+      const dd=+m[1], mm=(+m[2])-1, yy=(m[3].length===2?2000:+m[3]), hh=+(m[4]||0), mi=+(m[5]||0), ss=+(m[6]||0);
+      d = new Date(yy,mm,dd,hh,mi,ss);
+      if(!isNaN(d)) return d;
+    }
+    return null;
+  };
+  RZ.weekOfMonth14 = function(d){ if(!(d instanceof Date)||isNaN(d)) return null; const day=d.getDate(); return day<=7?1: day<=14?2: day<=21?3:4; };
+  RZ.mapSemana4 = function(n){ const num=Number(String(n).trim()); if(Number.isFinite(num)){ if(num>=1&&num<=4) return num; return ((num-1)%4)+1; } return null; };
+  RZ.getSemanaFromRow = function(row){
+    const exp = RZ.normKey(row, ['Semana','SEMANA','semana','N Semana','N_Semana','NSEMANA','nsemana']);
+    if(exp!=='' && exp!=null){ const m=RZ.mapSemana4(exp); if(m!=null) return m; }
+    const fh = RZ.normKey(row, ['FechaHora','Fecha y hora','Fecha y Hora','Fecha','fecha','FECHA','fecha_hora','Fecha/Hora','fechaHora']);
+    const d = RZ.parseDateLoose(fh);
+    return RZ.weekOfMonth14(d);
+  };
+
+  function ST(){ try{return window.STATE||{};}catch(e){return {};} }
+  function q(id){ return document.getElementById(id); }
+
+  function fillResumenFilters(){
+    const st=ST();
+    const vend=new Set(), ges=new Set();
+    const cal=Array.isArray(st.calendario)?st.calendario:[];
+    cal.forEach(r=>{
+      const v=RZ.normKey(r,['vendedor','Vendedor','VENDEDOR']);
+      const g=RZ.normKey(r,['gestor_servicio','Gestor','GESTOR_SERVICIO']);
+      if(String(v).trim()) vend.add(String(v));
+      if(String(g).trim()) ges.add(String(g));
+    });
+    const calls=Array.isArray(st.calls)?st.calls:[];
+    calls.forEach(r=>{
+      const v=RZ.normKey(r,['Vendedor','vendedor','VENDEDOR']);
+      const g=RZ.normKey(r,['gestor','Gestor','GESTOR','gestor_servicio','GESTOR_SERVICIO']);
+      if(String(v).trim()) vend.add(String(v));
+      if(String(g).trim()) ges.add(String(g));
+    });
+    const sV=q('rwVendedor'), sG=q('rwGestor');
+    if(sV){
+      const cur=sV.value;
+      sV.innerHTML='<option value="">Todos</option>'+Array.from(vend).sort((a,b)=>a.localeCompare(b,'es',{numeric:true})).map(x=>`<option value="${x}">${x}</option>`).join('');
+      if(vend.has(cur)) sV.value=cur;
+    }
+    if(sG){
+      const cur=sG.value;
+      sG.innerHTML='<option value="">Todos</option>'+Array.from(ges).sort((a,b)=>a.localeCompare(b,'es',{numeric:true})).map(x=>`<option value="${x}">${x}</option>`).join('');
+      if(ges.has(cur)) sG.value=cur;
+    }
+  }
+
+
+  function computeResumenAggregates(){
+    const st=ST();
+    const cal=Array.isArray(st.calendario)?st.calendario:[];
+    const calls=Array.isArray(st.calls)?st.calls:[];
+
+    const fSemana = q('rwSemana')?.value || '';
+    const fVend = q('rwVendedor')?.value || '';
+    const fGes = q('rwGestor')?.value || '';
+
+    const fVendN = RZ.normName(fVend);
+    const fGesN = RZ.normName(fGes);
+    const weekFilter = fSemana? Number(fSemana) : null;
+
+    const matchVend = v => !fVendN or RZ.normName(v)===fVendN;
+    const matchGes  = g => !fGesN or RZ.normName(g)===fGesN;
+    const matchWeek = w => !weekFilter or Number(w)===weekFilter;
+
+    // PLAN (Calendario)
+    const plan = new Map(); // key: gestor|sem -> count
+    const gestoresSet = new Set();
+    cal.forEach(r=>{
+      const vendedor = RZ.normKey(r,['vendedor','Vendedor','VENDEDOR']);
+      const gestor   = RZ.normKey(r,['gestor_servicio','Gestor','GESTOR_SERVICIO']);
+      const sem      = RZ.mapSemana4(RZ.normKey(r,['Semana','SEMANA','semana']));
+      if(!gestor || !sem) return;
+      if(!matchVend(vendedor)) return;
+      if(!matchGes(gestor)) return;
+      if(!matchWeek(sem)) return;
+      gestoresSet.add(gestor);
+      const k = gestor+'|'+sem;
+      plan.set(k,(plan.get(k)||0)+1);
+    });
+
+    // DONE (Calls)
+    const done = new Map();
+    const last = new Map(); // key -> Date
+    calls.forEach(r=>{
+      const vendedor = RZ.normKey(r,['Vendedor','vendedor','VENDEDOR']);
+      const gestor   = RZ.normKey(r,['gestor','Gestor','GESTOR','gestor_servicio','GESTOR_SERVICIO']);
+      const sem      = RZ.getSemanaFromRow(r);
+      if(!gestor || !sem) return;
+      if(!matchVend(vendedor)) return;
+      if(!matchGes(gestor)) return;
+      if(!matchWeek(sem)) return;
+      gestoresSet.add(gestor);
+      const k = gestor+'|'+sem;
+      done.set(k,(done.get(k)||0)+1);
+      const d = RZ.parseDateLoose(RZ.normKey(r,['FechaHora','Fecha y hora','Fecha y Hora','Fecha','fecha','FECHA','fecha_hora','Fecha/Hora','fechaHora']));
+      if(d && (!last.has(k) || last.get(k) < d)) last.set(k,d);
+    });
+
+    // Build array per gestor with weeks 1..4 always
+    const gestores = Array.from(gestoresSet).sort((a,b)=>a.localeCompare(b,'es',{numeric:true}));
+    const rows = [];
+    gestores.forEach(g=>{
+      for(let w=1; w<=4; w++){
+        if(weekFilter && w!==weekFilter) continue;
+        const k = g+'|'+w;
+        const p = plan.get(k)||0;
+        const d = done.get(k)||0;
+        const cov = p>0 ? Math.round((d/p)*100) : 0;
+        const lastStr = last.has(k) ? new Date(last.get(k)).toLocaleString() : '';
+        rows.push({gestor:g, semana:w, plan:p, done:d, cov:cov, last:lastStr});
+      }
+    });
+
+    // Totals
+    const totalPlan = rows.reduce((a,r)=>a+r.plan,0);
+    const totalDone = rows.reduce((a,r)=>a+r.done,0);
+    const totalCov  = totalPlan>0 ? Math.round((totalDone/totalPlan)*100) : 0;
+
+    return { rows, totalPlan, totalDone, totalCov };
+  }
+
+
+  function renderResumenKpisAndChips(agg){
+    const plan = String(agg.totalPlan);
+    const done = String(agg.totalDone);
+    const cov  = String(agg.totalCov)+'%';
+    const ids = { kpiPlan:'kpiPlan', kpiDone:'kpiDone', kpiCov:'kpiCov', rwPlan:'rwPlan', rwDone:'rwDone', rwCov:'rwCov' };
+    for(const [k,id] of Object.entries(ids)){
+      const el = q(id);
+      if(el) el.textContent = (k==='kpiCov'||k==='rwCov')? cov : (k.endsWith('Plan')||k==='rwPlan'? plan : (k.endsWith('Done')||k==='rwDone'? done : cov));
+    }
+    const info = q('rwInfo');
+    if(info){
+      const fS = q('rwSemana')?.value || 'Todas';
+      const fV = q('rwVendedor')?.value || 'Todos';
+      const fG = q('rwGestor')?.value || 'Todos';
+      info.textContent = `Semana: ${fS||'Todas'} · Vendedor: ${fV||'Todos'} · Gestor: ${fG||'Todos'}`;
+    }
+  }
+
+  function renderResumenTable(agg){
+    const tb = q('rwTbl')?.querySelector('tbody');
+    if(!tb) return;
+    tb.innerHTML='';
+    agg.rows.forEach(r=>{
+      const tr=document.createElement('tr');
+      tr.innerHTML = `<td>${r.gestor}</td><td>${r.semana}</td><td>${r.plan}</td><td>${r.done}</td><td>${r.cov}%</td><td>${r.last}</td>`;
+      tb.appendChild(tr);
+    });
+  }
+
+  function exportResumenCSV(agg){
+    const lines = [['Gestor','Semana','A realizar','Realizadas','% Cobertura','Última llamada']]
+      .concat(agg.rows.map(r=>[r.gestor,r.semana,r.plan,r.done,`${r.cov}%`,r.last]));
+    const csv = lines.map(row=>row.map(v=>`"${String(v).replace(/"/g,'""')}"`).join(',')).join('\n');
+    const blob = new Blob([csv],{type:'text/csv;charset=utf-8;'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href=url; a.download='resumen_semanal.csv'; a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  function recomputeResumen(){
+    fillResumenFilters();
+    const agg = computeResumenAggregates();
+    renderResumenKpisAndChips(agg);
+    renderResumenTable(agg);
+    return agg;
+  }
+
+  function hookResumenEvents(){
+    const ids = ['rwSemana','rwVendedor','rwGestor'];
+    ids.forEach(id=>{ const el=q(id); if(el){ el.addEventListener('change', ()=>recomputeResumen()); }});
+    const btnExp = q('rwExport'); if(btnExp){ btnExp.addEventListener('click', ()=>{ const agg=recomputeResumen(); exportResumenCSV(agg); }); }
+    // When the overlay is shown (body.show-resumen), recompute once
+    const obs = new MutationObserver(()=>{
+      if(document.body.classList.contains('show-resumen')){
+        setTimeout(()=>recomputeResumen(), 30);
+      }
+    });
+    obs.observe(document.body,{attributes:true,attributeFilter:['class']});
+    // Also compute on DOM ready for safety
+    document.addEventListener('DOMContentLoaded', ()=>{ /* lazy */ });
+  }
+
+  // Initialize hooks immediately (safe even if elements not yet in DOM)
+  try{ hookResumenEvents(); }catch(e){ console.warn('Resumen hook error', e); }
+})(); // ===== end RESUMEN KPI LOGIC =====
+
+</script>
 </body>
 </html>
