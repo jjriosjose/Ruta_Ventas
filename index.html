@@ -2888,14 +2888,29 @@ document.addEventListener('click', (ev)=>{
   function getCallFecha(rec){ return toDate(get(rec, ['Fecha/Hora','Fecha','fecha','FechaHora','fecha_hora'])); }
 
   function buildResumenFilters(){
-    if(!Array.isArray(STATE.joined) || STATE.joined.length===0) return false;
-    const semanas = uniqueSorted(STATE.joined.map(x=> String(x.semana||'').trim()).filter(Boolean));
-    const vendedores = uniqueSorted(STATE.joined.map(x=> x.vendedor).filter(v=>!isVendorExcluded(v)));
-    const gestores = uniqueSorted(STATE.joined.map(x=> x.gestor));
-    fillSelect('rwSemana', semanas.length? semanas : ['1','2','3','4'], 'Todas');
-    fillSelect('rwVendedor', vendedores, 'Todos');
-    fillSelect('rwGestor', gestores, 'Todos');
-    return true;
+    const cal = Array.isArray(STATE.calendario)? STATE.calendario : [];
+    if(cal.length){
+      const get = (r,klist)=>{ for(const k of klist){ if(r[k]!=null && r[k]!=='' ) return r[k]; } const m={}; for(const k in r){ m[k.toLowerCase().replace(/\s|_/g,'')]=r[k]; } for(const k of klist){ const nk=k.toLowerCase().replace(/\s|_/g,''); if(m[nk]!=null && m[nk]!=='' ) return m[nk]; } return ''; };
+      const weeks = cal.map(r=> String(get(r,['SEMANA','Semana','semana'])||'').trim()).filter(Boolean);
+      const semanas = uniqueSorted(weeks.map(w=>{ const n=Number(String(w).replace(/[^0-9]/g,'')); return (isFinite(n)&&n>=1) ? (n<=4? String(n): String(((n-1)%4)+1)) : String(w); }));
+      const vendedores = uniqueSorted(cal.map(r=> get(r,['vendedor','Vendedor','VENDEDOR']) ).filter(v=>!isVendorExcluded(v)));
+      const gestores   = uniqueSorted(cal.map(r=> get(r,['gestor_servicio','Gestor','GESTOR_SERVICIO']) ));
+      fillSelect('rwSemana', semanas.length? semanas : ['1','2','3','4'], 'Todas');
+      fillSelect('rwVendedor', vendedores, 'Todos');
+      fillSelect('rwGestor', gestores, 'Todos');
+      return true;
+    }
+    // fallback a joined/UI (por si el calendario aún no cargó)
+    if(Array.isArray(STATE.joined) && STATE.joined.length){
+      const semanas = uniqueSorted(STATE.joined.map(x=> String(x.semana||'').trim()).filter(Boolean));
+      const vendedores = uniqueSorted(STATE.joined.map(x=> x.vendedor).filter(v=>!isVendorExcluded(v)));
+      const gestores = uniqueSorted(STATE.joined.map(x=> x.gestor));
+      fillSelect('rwSemana', semanas.length? semanas : ['1','2','3','4'], 'Todas');
+      fillSelect('rwVendedor', vendedores, 'Todos');
+      fillSelect('rwGestor', gestores, 'Todos');
+      return true;
+    }
+    return false;
   }
 
   function renderResumen(){
