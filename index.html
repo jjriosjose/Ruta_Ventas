@@ -3783,5 +3783,223 @@ document.addEventListener('click', (ev)=>{
 })();
 
 </script>
+
+<script>
+// === Resumen (Sem) Controller — SAFE (no eliminación de botones) ===
+
+// Utilidad: formateo y %
+function pct(num, den){
+  const n = Number(num)||0, d = Number(den)||0;
+  if(d<=0) return '0%';
+  return Math.round(n*100/d) + '%';
+}
+
+function ensureResumenFilters(){
+  // Llenar opciones de Vendedor/Gestor con datos vivos
+  try{
+    const vendSel = document.getElementById('rwVendedor');
+    const gestSel = document.getElementById('rwGestor');
+    if(!vendSel || !gestSel || !window.STATE || !Array.isArray(STATE.joined)) return;
+
+    const vendors = Array.from(new Set(STATE.joined.map(x=>x.vendedor).filter(Boolean))).sort((a,b)=>String(a).localeCompare(String(b),'es',{numeric:true}));
+    const gestors = Array.from(new Set(STATE.joined.map(x=>x.gestor).filter(Boolean))).sort((a,b)=>String(a).localeCompare(String(b),'es',{numeric:true}));
+
+    const mkOpts = (arr, allLabel) => ['<option value="">'+allLabel+'</option>'].concat(arr.map(v=>'<option>'+String(v)+'</option>')).join('');
+
+    if(vendSel.dataset.filled!=='1'){
+      vendSel.innerHTML = mkOpts(vendors, 'Todos');
+      vendSel.dataset.filled = '1';
+    }
+    if(gestSel.dataset.filled!=='1'){
+      gestSel.innerHTML = mkOpts(gestors, 'Todos');
+      gestSel.dataset.filled = '1';
+    }
+  }catch(_){}
+}
+
+function resumenFilters(){
+  const semana = document.getElementById('rwSemana')?.value || '';
+  const vendedor = document.getElementById('rwVendedor')?.value || '';
+  const gestor = document.getElementById('rwGestor')?.value || '';
+  return { semana, vendedor, gestor };
+}
+
+function computeResumenData(){
+  // Requiere STATE.calendario (plan) y llamadas (done)
+  const cal = Array.isArray(STATE?.calendario) ? STATE.calendario : [];
+  const calls = (typeof loadAllCallRecords === 'function') ? loadAllCallRecords() : [];
+
+  // Normalizadores
+  const norm = s => (s??'').toString().trim();
+  const getGestCal = r => r['gestor_servicio'] || r['Gestor'] || r['GESTOR_SERVICIO'] || r['gestor'] || '';
+  const getSemCal  = r => r['Semana'] || r['SEMANA'] || r['semana'] || r['N Semana'] || r['N_Semana'] || r['NSemana'] || '';
+  const key = (g,s) => norm(g)+'||'+norm(s);
+
+  // PLAN: contar filas del calendario por Gestor+Semana
+  const planByKey = {};
+  for(const r of cal){
+    const g = getGestCal(r);
+    const s = getSemCal(r);
+    if(!s) continue;
+    const k = key(g,s);
+    planByKey[k] = (planByKey[k]||0) + 1;
+  }
+
+  // DONE: llamadas por Gestor+Semana (usa r.semana de registro)
+  const doneByKey = {};
+  const lastByKey = {};
+  for(const r of calls){
+    const g = r.gestor_servicio || r.gestor || '';
+    const s = r.semana || '';
+    if(!s) continue;
+    const k = key(g,s);
+    doneByKey[k] = (doneByKey[k]||0) + 1;
+    const fh = r.fecha_hora || '';
+    if(fh){
+      const cur = lastByKey[k];
+      if(!cur || (new Date(fh) > new Date(cur))) lastByKey[k] = fh;
+    }
+  }
+
+  // Unir keys
+  const keys = new Set([...Object.keys(planByKey), ...Object.keys(doneByKey)]);
+  const rows = [];
+  for(const k of keys){
+    const [g,s] = k.split('||');
+    const plan = planByKey[k]||0;
+    const done = doneByKey[k]||0;
+    rows.push({gestor:g, semana:s, plan, done, cov: pct(done, plan), last:lastByKey[k]||''});
+  }
+  return rows;
+}
+
+function renderResumenSem(){
+  ensureResumenFilters();
+  const {semana, vendedor, gestor} = resumenFilters();
+  const all = computeResumenData();
+
+  // Filtro por Semana y Gestor (vendedor se usa si lo deseas como proxy; aquí la meta es por gestor)
+  const filtered = all.filter(r => {
+    if(semana && String(r.semana)!==String(semana)) return false;
+    if(gestor && String(r.gestor)!==String(gestor)) return false;
+    return true;
+  });
+
+  // KPIs totales
+  const planTot = filtered.reduce((a,b)=>a+b.plan,0);
+  const doneTot = filtered.reduce((a,b)=>a+b.done,0);
+  const covTot = (planTot>0) ? Math.round(doneTot*100/planTot)+'%' : '0%';
+
+  const kpiPlan = document.getElementById('kpiPlan');
+  const kpiDone = document.getElementById('kpiDone');
+  const kpiCov  = document.getElementById('kpiCov');
+  const rwPlan  = document.getElementById('rwPlan');
+  const rwDone  = document.getElementById('rwDone');
+  const rwCov   = document.getElementById('rwCov');
+
+  if(kpiPlan) kpiPlan.textContent = planTot;
+  if(kpiDone) kpiDone.textContent = doneTot;
+  if(kpiCov)  kpiCov.textContent  = covTot;
+  if(rwPlan)  rwPlan.textContent  = planTot;
+  if(rwDone)  rwDone.textContent  = doneTot;
+  if(rwCov)   rwCov.textContent   = covTot;
+
+  // Tabla
+  const tb = document.querySelector('#rwTbl tbody');
+  if(tb){
+    tb.innerHTML='';
+    filtered
+      .sort((a,b)=> String(a.gestor).localeCompare(String(b.gestor),'es',{numeric:true}) || Number(a.semana)-Number(b.semana))
+      .forEach(r=>{
+        const tr = document.createElement('tr');
+        tr.innerHTML = '<td>'+ (r.gestor||'') +'</td>'+
+                       '<td>'+ (r.semana||'') +'</td>'+
+                       '<td>'+ (r.plan||0) +'</td>'+
+                       '<td>'+ (r.done||0) +'</td>'+
+                       '<td>'+ (r.cov||'0%') +'</td>'+
+                       '<td>'+ (r.last||'') +'</td>';
+        tb.appendChild(tr);
+      });
+  }
+
+  // Info
+  const info = document.getElementById('rwInfo');
+  if(info){
+    info.textContent = 'Filtrado por ' +
+      (semana ? ('Semana '+semana) : 'todas las semanas') +
+      (gestor ? (', Gestor: '+gestor) : '');
+  }
+}
+
+function exportResumenCSV(){
+  const tb = document.querySelector('#rwTbl tbody');
+  const rows = [['Gestor','Semana','A realizar','Realizadas','% Cobertura','Última llamada']];
+  if(tb){
+    tb.querySelectorAll('tr').forEach(tr=>{
+      const cells = Array.from(tr.children).map(td=>td.textContent||'');
+      rows.push(cells);
+    });
+  }
+  const csv = rows.map(r=>r.map(v=>{
+    const s = String(v or '');
+    return (s.find?.(',') || s.find?.('"') || s.find?.('\n')) ? '"' + s.replace(/"/g,'""') + '"' : s;
+  }).join(',')).join('\\n');
+  const a=document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8;'}));
+  a.download = 'resumen_semanal.csv';
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
+// Abrir / cerrar overlay de Resumen (Sem)
+function openResumenOverlay(){
+  document.body.classList.add('show-resumen');
+  // Render en apertura
+  renderResumenSem();
+}
+function closeResumenOverlay(){
+  document.body.classList.remove('show-resumen');
+}
+
+// Wire events para TODOS los botones duplicados sin eliminar nada
+function wireResumenButtons(){
+  // Botones duplicados con id repetido (aceptamos y atachamos a todos)
+  document.querySelectorAll('button#btnReporteResumen').forEach(btn=>{
+    btn.addEventListener('click', openResumenOverlay);
+  });
+  // Botón suelto
+  const b2 = document.getElementById('btnOpenResumenSem');
+  if(b2) b2.addEventListener('click', openResumenOverlay);
+
+  // Cerrar
+  const volver = document.getElementById('rwVolver');
+  if(volver) volver.addEventListener('click', closeResumenOverlay);
+
+  // Re-render al cambiar filtros del Resumen
+  ['rwSemana','rwVendedor','rwGestor'].forEach(id=>{
+    const el = document.getElementById(id);
+    if(el) el.addEventListener('change', renderResumenSem);
+  });
+
+  // Export
+  const exp = document.getElementById('rwExport');
+  if(exp) exp.addEventListener('click', exportResumenCSV);
+}
+
+// Ejecutar cuando DOM esté listo y después del init()
+(function(){
+  if(document.readyState === 'complete' || document.readyState === 'interactive'){
+    setTimeout(wireResumenButtons, 150);
+    // Intentar también después del init principal
+    setTimeout(ensureResumenFilters, 500);
+  }else{
+    document.addEventListener('DOMContentLoaded', ()=>{
+      setTimeout(wireResumenButtons, 150);
+      setTimeout(ensureResumenFilters, 500);
+    });
+  }
+})();
+</script>
+
 </body>
 </html>
