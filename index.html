@@ -3471,14 +3471,14 @@ document.addEventListener('click', (ev)=>{
   function fillResumenFilters(){
     const st=ST();
     const vend=new Set(), ges=new Set();
-    const cal=Array.isArray(st.calendario)?st.calendario:[];
+    const cal=(window.__RZ_getStateRefs? window.__RZ_getStateRefs().calendario : (Array.isArray(st.calendario)?st.calendario: (Array.isArray(st.Calendario)?st.Calendario:[])));
     cal.forEach(r=>{
       const v=RZ.normKey(r,['vendedor','Vendedor','VENDEDOR']);
       const g=RZ.normKey(r,['gestor_servicio','Gestor','GESTOR_SERVICIO']);
       if(String(v).trim()) vend.add(String(v));
       if(String(g).trim()) ges.add(String(g));
     });
-    const calls=Array.isArray(st.calls)?st.calls:[];
+    const calls=(window.__RZ_getStateRefs? window.__RZ_getStateRefs().calls : (Array.isArray(st.calls)?st.calls: (Array.isArray(st.Calls)?st.Calls:[])));
     calls.forEach(r=>{
       const v=RZ.normKey(r,['Vendedor','vendedor','VENDEDOR']);
       const g=RZ.normKey(r,['gestor','Gestor','GESTOR','gestor_servicio','GESTOR_SERVICIO']);
@@ -3501,8 +3501,8 @@ document.addEventListener('click', (ev)=>{
 
   function computeResumenAggregates(){
     const st=ST();
-    const cal=Array.isArray(st.calendario)?st.calendario:[];
-    const calls=Array.isArray(st.calls)?st.calls:[];
+    const cal=(window.__RZ_getStateRefs? window.__RZ_getStateRefs().calendario : (Array.isArray(st.calendario)?st.calendario: (Array.isArray(st.Calendario)?st.Calendario:[])));
+    const calls=(window.__RZ_getStateRefs? window.__RZ_getStateRefs().calls : (Array.isArray(st.calls)?st.calls: (Array.isArray(st.Calls)?st.Calls:[])));
 
     const fSemana = q('rwSemana')?.value || '';
     const fVend = q('rwVendedor')?.value || '';
@@ -3512,9 +3512,9 @@ document.addEventListener('click', (ev)=>{
     const fGesN = RZ.normName(fGes);
     const weekFilter = fSemana? Number(fSemana) : null;
 
-    const matchVend = v => !fVendN or RZ.normName(v)===fVendN;
-    const matchGes  = g => !fGesN or RZ.normName(g)===fGesN;
-    const matchWeek = w => !weekFilter or Number(w)===weekFilter;
+    const matchVend = v => !fVendN || RZ.normName(v)===fVendN;
+    const matchGes  = g => !fGesN || RZ.normName(g)===fGesN;
+    const matchWeek = w => !weekFilter || Number(w)===weekFilter;
 
     // PLAN (Calendario)
     const plan = new Map(); // key: gestor|sem -> count
@@ -3639,6 +3639,27 @@ document.addEventListener('click', (ev)=>{
 
   // Initialize hooks immediately (safe even if elements not yet in DOM)
   try{ hookResumenEvents(); }catch(e){ console.warn('Resumen hook error', e); }
+
+  // Extra triggers to ensure KPIs render when la pantalla Resumen se muestra
+  function isVisible(el){
+    if(!el) return false;
+    return !!(el.offsetWidth || el.offsetHeight || el.getClientRects().length);
+  }
+  function tryAutoRecompute(){
+    const el = q('screenResumenSem');
+    if(isVisible(el)) recomputeResumen();
+  }
+  // Recompute on DOM ready and on general clicks (navegación por botones)
+  document.addEventListener('DOMContentLoaded', ()=> setTimeout(tryAutoRecompute, 60));
+  document.addEventListener('click', ()=> setTimeout(tryAutoRecompute, 60));
+
+  // Observe #screenResumenSem visibility changes
+  const _rz_target = document.getElementById('screenResumenSem');
+  if(_rz_target){
+    const _rz_obs = new MutationObserver(()=> setTimeout(tryAutoRecompute, 30));
+    _rz_obs.observe(_rz_target, {attributes:true, attributeFilter:['class','style']});
+  }
+
 })(); // ===== end RESUMEN KPI LOGIC =====
 
 </script>
