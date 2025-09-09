@@ -3958,22 +3958,22 @@ document.addEventListener('click', (ev)=>{
 </script>
 
 
-<!-- ===== Resumen (Semanal) sincronizado con filtros del Reporte ===== -->
-<link rel="stylesheet" href="https://unpkg.com/@phosphor-icons/web@2.1.1/src/bold/style.css">
+<!-- ======= INTEGRACIÓN KPI SEMANAL ======= -->
 <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <style>
-  .rs-card{background:#fff;border-radius:12px;box-shadow:0 8px 24px rgba(0,0,0,.06);padding:14px;}
-  .rs-title{font-weight:800;font-size:18px}
+  /* Overlay */
+  #rsOverlay{position:fixed;inset:0;background:rgba(0,0,0,.5);backdrop-filter:blur(3px);display:none;align-items:flex-start;justify-content:center;overflow:auto;z-index:9999}
+  #rsPanel{margin:28px 10px;width:1200px;max-width:95vw}
+  .rs-card{background:#fff;border-radius:14px;box-shadow:0 10px 24px rgba(2,6,23,.08);padding:14px}
   .rs-muted{color:#64748b}
+  .rs-title{font-size:18px;font-weight:800}
   .rs-grid{display:grid;gap:10px}
   @media(min-width:900px){ .rs-grid.cols-4{grid-template-columns:repeat(4,1fr)} .rs-grid.cols-3{grid-template-columns:repeat(3,1fr)} }
+  .rs-pill{display:inline-flex;align-items:center;gap:6px;background:#e2e8f0;border-radius:999px;padding:6px 10px;font-size:12px}
   .rs-kpi{font-size:30px;font-weight:900}
-  .rs-pill{display:inline-flex;align-items:center;gap:6px;background:#f1f5f9;color:#0f172a;border-radius:999px;padding:4px 8px;font-size:12px}
   .rs-tab{padding:6px 10px;border-radius:8px;background:#e2e8f0}
-  .rs-tab.active{background:#0ea5e9;color:#fff}
-  #rsOverlay{position:fixed;inset:0;background:rgba(2,6,23,.6);backdrop-filter:saturate(140%) blur(3px);display:none;align-items:flex-start;justify-content:center;overflow:auto;z-index:9999}
-  #rsPanel{margin:30px 10px;max-width:1200px;width:1200px}
+  .rs-tab.active{background:#2563eb;color:#fff}
   table.rs-table{width:100%;border-collapse:collapse}
   table.rs-table th, table.rs-table td{padding:10px;border-bottom:1px solid #eef2f7;font-size:14px;text-align:left}
   table.rs-table th{font-size:12px;letter-spacing:.02em;text-transform:uppercase;color:#64748b}
@@ -3984,13 +3984,13 @@ document.addEventListener('click', (ev)=>{
     <div class="rs-card">
       <div style="display:flex;justify-content:space-between;align-items:center">
         <div class="rs-title">📞 Reporte de llamadas — <span class="rs-muted">Resumen (Semanal)</span></div>
-        <div style="display:flex;gap:8px;align-items:center">
-          <button id="rsExport" class="rs-pill"><i class="ph ph-download-simple"></i> Exportar Excel</button>
-          <button id="rsClose" class="rs-pill">✖ Cerrar</button>
+        <div style="display:flex;gap:6px">
+          <span id="rsChips" class="rs-muted" style="align-self:center;font-size:12px"></span>
+          <button id="rsExport" class="rs-pill">Exportar Excel</button>
+          <button id="rsClose" class="rs-pill">Cerrar</button>
         </div>
       </div>
 
-      <!-- Filtros -->
       <div class="rs-grid cols-4" style="margin-top:10px">
         <div class="rs-card">
           <div class="rs-muted" style="font-size:12px">Semana</div>
@@ -4000,34 +4000,29 @@ document.addEventListener('click', (ev)=>{
           </select>
         </div>
         <div class="rs-card">
-          <div class="rs-muted" style="font-size:12px">Vendedor (desde Reporte)</div>
+          <div class="rs-muted" style="font-size:12px">Vendedor (Reporte)</div>
           <div id="rsVendTag" class="rs-pill">—</div>
         </div>
         <div class="rs-card">
-          <div class="rs-muted" style="font-size:12px">Gestor (desde Reporte)</div>
+          <div class="rs-muted" style="font-size:12px">Gestor (Reporte)</div>
           <div id="rsGestTag" class="rs-pill">—</div>
         </div>
         <div class="rs-card">
           <div class="rs-muted" style="font-size:12px">Acciones</div>
           <div style="display:flex;gap:8px">
-            <button id="rsSync" class="rs-pill"><i class="ph ph-arrow-clockwise"></i> Sincronizar</button>
+            <button id="rsSync" class="rs-pill">Sincronizar</button>
           </div>
         </div>
       </div>
 
-      <!-- KPIs -->
       <div class="rs-grid cols-3" style="margin-top:10px">
         <div class="rs-card"><div class="rs-muted">A realizar (itinerarios)</div><div id="rsK1" class="rs-kpi">0</div></div>
         <div class="rs-card"><div class="rs-muted">Realizadas (llamadas)</div><div id="rsK2" class="rs-kpi">0</div></div>
         <div class="rs-card"><div class="rs-muted">% Cobertura</div><div id="rsK3" class="rs-kpi">0%</div></div>
       </div>
 
-      <!-- Tabs + Tabla detalle -->
       <div class="rs-card" style="margin-top:10px">
-        <div style="display:flex;gap:8px">
-          <button id="rsTabPend" class="rs-tab active">Pendientes (Agenda)</button>
-          <button id="rsTabReal" class="rs-tab">Realizadas (Historial)</button>
-        </div>
+        <div style="display:flex;gap:8px"><button id="rsTabPend" class="rs-tab active">Pendientes (Agenda)</button><button id="rsTabReal" class="rs-tab">Realizadas (Historial)</button></div>
         <div style="overflow:auto;margin-top:10px">
           <table class="rs-table" id="rsTblDet">
             <thead><tr>
@@ -4038,7 +4033,6 @@ document.addEventListener('click', (ev)=>{
         </div>
       </div>
 
-      <!-- Resumen inferior -->
       <div class="rs-card" style="margin-top:10px">
         <div style="overflow:auto">
           <table class="rs-table" id="rsTblRes">
@@ -4054,13 +4048,16 @@ document.addEventListener('click', (ev)=>{
 </div>
 
 <script>
-/* ===== Config ===== */
-const RS_URL_AGENDA = "https://docs.google.com/spreadsheets/d/e/2PACX-1vSGjr-XdLSamHpGQfoORmLfntJbLd-UbFpD7NdMM14x2JdMhxOYHTWQBlhYCMDu0ZTy3AYS-1Y3q91Y/pub?gid=223681507&single=true&output=csv";
-/* Usuarios y resto de la app: se dejan como ya los tienes en tu index base. */
+/* ===== Auto-config login: modo cloud + usuarios ===== */
+try{
+  localStorage.setItem('cfg.mode','cloud');
+  localStorage.setItem('cfg.users','https://docs.google.com/spreadsheets/d/e/2PACX-1vSGjr-XdLSamHpGQfoORmLfntJbLd-UbFpD7NdMM14x2JdMhxOYHTWQBlhYCMDu0ZTy3AYS-1Y3q91Y/pub?gid=1395226434&single=true&output=csv');
+}catch(e){}
 
 /* ===== Helpers ===== */
+const RS_AGENDA_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vSGjr-XdLSamHpGQfoORmLfntJbLd-UbFpD7NdMM14x2JdMhxOYHTWQBlhYCMDu0ZTy3AYS-1Y3q91Y/pub?gid=223681507&single=true&output=csv"; // Calendario
 const RS_norm = s => (s??"").toString().trim();
-const RS_acc  = s => RS_norm(s).normalize('NFD').replace(/\p{Diacritic}/gu,'').toLowerCase();
+const RS_acc  = s => RS_norm(s).normalize('NFD').replace(/\\p{Diacritic}/gu,'').toLowerCase();
 function RS_parseCSV(url){
   return new Promise((resolve,reject)=>{
     Papa.parse(url,{download:true,header:true,skipEmptyLines:true,
@@ -4073,73 +4070,131 @@ function RS_getSemana(r){
   for(const k of ks){ if(r[k]!==undefined && RS_norm(r[k])!==""){ const n=parseInt(r[k],10); return isNaN(n)? RS_norm(r[k]): String(n);} }
   return "";
 }
-function RS_weekOfMonthFromDateStr(s){
+function RS_weekFromDate(s){
   if(!s) return "";
-  const m = (s.match(/(\d{4})-(\d{2})-(\d{2})/)||[]);
+  const m = (s.match(/(\\d{4})-(\\d{2})-(\\d{2})/)||[]);
   if(m.length<4) return "";
   const d = parseInt(m[3],10);
   if(d<=7) return "1"; if(d<=14) return "2"; if(d<=21) return "3"; return "4";
 }
 
 /* ===== Estado ===== */
-let RS_agenda=[], RS_hist=[], RS_tab="pend";
-let RS_vendorSel="(todos)", RS_gestorSel="(todos)";
+let RS_agenda=[], RS_hist=[], RS_tab='pend', RS_vendorSel='(todos)', RS_gestorSel='(todos)';
 
-/* ===== Sincronización con tu Reporte ===== */
+/* ===== Leer Reporte (tabla y filtros) ===== */
+function RS_enhanceReporteOnce(){
+  // Agrega botón "Resumen (Semanal)" y columna "N° Semana", y convierte filtros a selects
+  const modal = document.querySelector('[role="dialog"], .modal');
+  if(!modal) return false;
+
+  // Botón Resumen si no existe
+  if(!modal.querySelector('#btnReporteResumen')){
+    const toolbar = modal.querySelector('button, .toolbar')?.parentElement || modal;
+    const btn = document.createElement('button'); btn.id='btnReporteResumen'; btn.textContent='Reporte (Resumen)';
+    btn.className='btn btn-secondary'; btn.style.marginLeft='8px';
+    if(toolbar.firstElementChild) toolbar.insertBefore(btn, toolbar.firstElementChild.nextSibling);
+    btn.addEventListener('click', ()=>{
+      document.getElementById('rsOverlay').style.display='flex';
+      RS_bootResumen();
+    });
+  }
+
+  const table = modal.querySelector('table'); if(!table) return true;
+  const thead = table.tHead, tbody = table.tBodies[0]; if(!thead||!tbody) return true;
+
+  // Índices
+  const headers = Array.from(thead.querySelectorAll('th')).map(th => (th.textContent||'').trim().toLowerCase());
+  const idx = { fecha: headers.indexOf('fecha/hora'), vendedor: headers.indexOf('vendedor'), gestor: headers.indexOf('gestor') };
+
+  // Columna N° Semana
+  if(!headers.some(h=>h.includes('semana'))){
+    const th = document.createElement('th'); th.textContent='N° Semana';
+    if(idx.gestor>=0){ thead.rows[0].insertBefore(th, thead.rows[0].children[idx.gestor+1]||null); } else { thead.rows[0].appendChild(th); }
+    for(const tr of Array.from(tbody.rows)){
+      const td = document.createElement('td');
+      const s = idx.fecha>=0? (tr.children[idx.fecha]?.textContent||'').trim() : '';
+      td.textContent = RS_weekFromDate(s);
+      if(idx.gestor>=0){ tr.insertBefore(td, tr.children[idx.gestor+1]||null);} else { tr.appendChild(td);}
+    }
+  }
+
+  // Convertir Gestor/Vendedor a selects con valores de la tabla
+  const vendVals = idx.vendedor>=0? Array.from(tbody.rows).map(r => RS_norm(r.children[idx.vendedor]?.textContent)).filter(Boolean) : [];
+  const gestVals = idx.gestor>=0?   Array.from(tbody.rows).map(r => RS_norm(r.children[idx.gestor]?.textContent)).filter(Boolean) : [];
+
+  function toSelect(inputLike, options){
+    if(!inputLike) return null;
+    if(inputLike.tagName?.toLowerCase()==='select'){ inputLike.innerHTML=''; }
+    let sel = inputLike;
+    if(inputLike.tagName?.toLowerCase()!=='select'){
+      sel = document.createElement('select');
+      sel.className = inputLike.className; sel.style.cssText = inputLike.style.cssText; sel.id = inputLike.id; sel.name = inputLike.name;
+      inputLike.replaceWith(sel);
+    }
+    const uniq = Array.from(new Set(['(todos)', ...options.sort()]));
+    sel.innerHTML = uniq.map(v=>`<option>${v}</option>`).join('');
+    return sel;
+  }
+
+  // Encontrar controles por el label anterior
+  const vendControl = Array.from(modal.querySelectorAll('label')).find(l => (l.textContent||'').toLowerCase().includes('vendedor'));
+  const gestControl = Array.from(modal.querySelectorAll('label')).find(l => (l.textContent||'').toLowerCase().includes('gestor'));
+  const vendInput = vendControl ? vendControl.parentElement.querySelector('input,select') : null;
+  const gestInput = gestControl ? gestControl.parentElement.querySelector('input,select') : null;
+
+  const vendSel = toSelect(vendInput, vendVals);
+  const gestSel = toSelect(gestInput, gestVals);
+
+  function apply(){
+    RS_vendorSel = RS_norm(vendSel?.value || '(todos)');
+    RS_gestorSel = RS_norm(gestSel?.value || '(todos)');
+    // Aplicar en la tabla del reporte (ocultar filas que no aplican)
+    const vnorm = RS_acc(RS_vendorSel), gnorm = RS_acc(RS_gestorSel);
+    for(const tr of Array.from(tbody.rows)){
+      const vt = idx.vendedor>=0? RS_acc(tr.children[idx.vendedor]?.textContent):'';
+      const gt = idx.gestor>=0? RS_acc(tr.children[idx.gestor]?.textContent):'';
+      const okV = (RS_vendorSel==='(todos)') || (vt===vnorm);
+      const okG = (RS_gestorSel==='(todos)') || (gt===gnorm);
+      tr.style.display = (okV && okG)? '' : 'none';
+    }
+  }
+  vendSel && (vendSel.onchange = apply);
+  gestSel && (gestSel.onchange = apply);
+  apply();
+  return true;
+}
+
 function RS_readReporte(){
-  // Busca el modal de Reporte (ya abierto por ti), lee su tabla filtrada y los valores actuales de filtros
-  const modal = document.querySelector('[role="dialog"], .modal, .dialog, .reporte-llamadas');
+  const modal = document.querySelector('[role="dialog"], .modal');
   const table = modal ? modal.querySelector('table') : null;
   const thead = table ? table.tHead : null;
   const tbody = table ? table.tBodies[0] : null;
   if(!thead || !tbody){ RS_hist=[]; return; }
 
   const headers = Array.from(thead.querySelectorAll('th')).map(th => (th.textContent||'').trim().toLowerCase());
-  const idx = {
-    fecha: headers.indexOf('fecha/hora'),
-    cliente: headers.indexOf('cliente'),
-    cod: headers.indexOf('cod'),
-    vendedor: headers.indexOf('vendedor'),
-    gestor: headers.indexOf('gestor'),
-  };
+  const idx = { fecha: headers.indexOf('fecha/hora'), cliente: headers.indexOf('cliente'), cod: headers.indexOf('cod'), vendedor: headers.indexOf('vendedor'), gestor: headers.indexOf('gestor'), semana: headers.findIndex(h=>h.includes('semana')) };
 
-  // Leer filtros visuales del propio modal (si existen)
-  // Busca inputs por label aproximado
-  function findInputByLabel(txt){
-    const labs = Array.from(modal.querySelectorAll('label'));
-    const l = labs.find(l => (l.textContent||'').trim().toLowerCase().includes(txt));
-    if(l){ const id = l.getAttribute('for'); if(id){ return modal.querySelector('#'+id);} }
-    // fallback: primer input/select dentro del contenedor
-    return modal.querySelector('select[placeholder*="'+txt+'"], input[placeholder*="'+txt+'"]');
-  }
-  const vendInput = modal.querySelector('select') && Array.from(modal.querySelectorAll('select')).find(s=>(s.previousElementSibling?.textContent||'').toLowerCase().includes('vendedor'));
-  const gestInput = modal.querySelector('select') && Array.from(modal.querySelectorAll('select')).find(s=>(s.previousElementSibling?.textContent||'').toLowerCase().includes('gestor'));
-  RS_vendorSel = RS_norm(vendInput?.value || '(todos)');
-  RS_gestorSel = RS_norm(gestInput?.value || '(todos)');
-  document.getElementById('rsVendTag').textContent = RS_vendorSel || '(todos)';
-  document.getElementById('rsGestTag').textContent = RS_gestorSel || '(todos)';
-
-  // Construir historial desde las filas visibles
   RS_hist = [];
   for(const tr of Array.from(tbody.rows)){
-    if(tr.style.display==='none') continue; // respetar filtros del modal
-    const row = {
+    if(tr.style.display==='none') continue;
+    const h = {
       cod: RS_norm(idx.cod>=0 ? tr.children[idx.cod]?.textContent : ""),
       cliente: RS_norm(idx.cliente>=0 ? tr.children[idx.cliente]?.textContent : ""),
       vendedor: RS_norm(idx.vendedor>=0 ? tr.children[idx.vendedor]?.textContent : ""),
       gestor: RS_norm(idx.gestor>=0 ? tr.children[idx.gestor]?.textContent : ""),
       fecha: RS_norm(idx.fecha>=0 ? tr.children[idx.fecha]?.textContent : ""),
+      semana: idx.semana>=0 ? RS_norm(tr.children[idx.semana]?.textContent) : RS_weekFromDate(RS_norm(idx.fecha>=0 ? tr.children[idx.fecha]?.textContent : ""))
     };
-    row.semana = RS_weekOfMonthFromDateStr(row.fecha);
-    row.vendedor_norm = RS_acc(row.vendedor);
-    row.gestor_norm   = RS_acc(row.gestor);
-    RS_hist.push(row);
+    h.vendedor_norm = RS_acc(h.vendedor); h.gestor_norm = RS_acc(h.gestor);
+    RS_hist.push(h);
   }
+
+  document.getElementById('rsVendTag').textContent = RS_vendorSel || '(todos)';
+  document.getElementById('rsGestTag').textContent = RS_gestorSel || '(todos)';
 }
 
-/* ===== Carga de Agenda ===== */
 async function RS_loadAgenda(){
-  const ag = await RS_parseCSV(RS_URL_AGENDA);
+  const ag = await RS_parseCSV(RS_AGENDA_URL);
   RS_agenda = ag.map(r=>({
     cod: RS_norm(r["Cod Empresa"] ?? r["Cod"] ?? r["codigo"] ?? r["codigo_empresa"]),
     cliente: RS_norm(r["RazonSocial"] ?? r["Cliente"]),
@@ -4151,18 +4206,13 @@ async function RS_loadAgenda(){
     vendedor_norm: RS_acc(r["vendedor"] ?? r["Vendedor"]),
     gestor_norm: RS_acc(r["gestor_servicio"] ?? r["Gestor"]),
     condicion_norm: RS_acc(r["Condicion"] ?? r["Condición"] ?? r["CONDICION"]),
-  })).filter(r => r.cod);
+  })).filter(r=>r.cod);
 }
 
-/* ===== Filtros y derivaciones ===== */
-function RS_filters(){
-  return { semana: document.getElementById('rsSemana').value };
-}
-function RS_applyAgendaFilters(rows){
-  const { semana } = RS_filters();
-  // Sincronizados con Reporte
-  const vend = RS_acc(RS_vendorSel);
-  const gest = RS_acc(RS_gestorSel);
+function RS_filters(){ return {semana: document.getElementById('rsSemana').value}; }
+function RS_applyAgenda(rows){
+  const {semana} = RS_filters();
+  const vend = RS_acc(RS_vendorSel), gest = RS_acc(RS_gestorSel);
   return rows.filter(r=>{
     if(semana!=="Todas" && String(r.semana)!==String(semana)) return false;
     if(RS_vendorSel!=="(todos)" && r.vendedor_norm!==vend) return false;
@@ -4170,10 +4220,9 @@ function RS_applyAgendaFilters(rows){
     return true;
   });
 }
-function RS_applyHistFilters(rows){
-  const { semana } = RS_filters();
-  const vend = RS_acc(RS_vendorSel);
-  const gest = RS_acc(RS_gestorSel);
+function RS_applyHist(rows){
+  const {semana} = RS_filters();
+  const vend = RS_acc(RS_vendorSel), gest = RS_acc(RS_gestorSel);
   return rows.filter(r=>{
     if(semana!=="Todas" && String(r.semana)!==String(semana)) return false;
     if(RS_vendorSel!=="(todos)" && r.vendedor_norm!==vend) return false;
@@ -4182,17 +4231,17 @@ function RS_applyHistFilters(rows){
   });
 }
 
-/* ===== Render ===== */
-function RS_renderAll(){
-  // Plan (solo En Ruta) + dedup por Cod+Semana
-  const agenda = RS_applyAgendaFilters(RS_agenda).filter(a=>a.condicion_norm.includes('ruta'));
+function RS_render(){
+  const agendaF = RS_applyAgenda(RS_agenda).filter(a=>a.condicion_norm.includes('ruta'));
+  // Dedup A realizar por Cod+Semana
   const seen = new Set(); const plan = [];
-  for(const a of agenda){ const k = `${a.cod}__${a.semana}`; if(!seen.has(k)){ seen.add(k); plan.push(a);} }
+  for(const a of agendaF){ const k = `${a.cod}__${a.semana}`; if(!seen.has(k)){ seen.add(k); plan.push(a);} }
+  const hechas = RS_applyHist(RS_hist);
 
-  const hechas = RS_applyHistFilters(RS_hist);
+  document.getElementById('rsChips').textContent = `Plan: ${plan.length} filas • Llamadas: ${hechas.length}`;
 
   // KPIs
-  const k1 = plan.length, k2 = hechas.length, k3 = k1>0? Math.round(k2*100/k1): 0;
+  const k1 = plan.length, k2 = hechas.length, k3 = k1>0? Math.round(k2*100/k1):0;
   document.getElementById('rsK1').textContent = k1.toLocaleString();
   document.getElementById('rsK2').textContent = k2.toLocaleString();
   document.getElementById('rsK3').textContent = k3 + '%';
@@ -4201,36 +4250,51 @@ function RS_renderAll(){
   const key = r => `${r.cod}__${r.semana}`;
   const mapHechas = new Map(hechas.map(r=>[key(r),r]));
   const pendientes = plan.filter(a=>!mapHechas.has(key(a)));
-
-  const tbd = document.getElementById('rsTbdDet');
   const curTab = document.getElementById('rsTabPend').classList.contains('active') ? 'pend' : 'real';
-  const rows = curTab==='pend' ? pendientes : hechas.map(r=>({cod:r.cod,cliente:r.cliente,semana:r.semana,dia:'',vendedor:r.vendedor,gestor:r.gestor}));
-  tbd.innerHTML = rows.length? rows.map(r=>`
-    <tr><td>${r.cod}</td><td>${r.cliente||''}</td><td>${r.semana||''}</td><td>${r.dia||''}</td><td>${r.vendedor||''}</td><td>${r.gestor||''}</td><td style="text-align:right">${curTab==='pend'?1:0}</td></tr>
-  `).join('') : `<tr><td colspan="7" style="text-align:center;color:#64748b">Sin datos</td></tr>`;
+  const rows = curTab==='pend' ? pendientes : hechas.map(r=>({cod:r.cod,cliente:r.cliente,semana:r.semana,dia:'',vendedor:r.vendedor,gestor:r.gestor,fecha:r.fecha}));
+  document.getElementById('rsTbdDet').innerHTML = rows.length? rows.map(r=>`
+    <tr><td>${r.cod}</td><td>${r.cliente||''}</td><td>${r.semana||''}</td><td>${r.dia||''}</td><td>${r.vendedor||''}</td><td>${r.gestor||''}</td><td style="text-align:right">${curTab==='pend'?1:0}</td></tr>`).join('')
+    : `<tr><td colspan="7" style="text-align:center;color:#64748b">Sin datos</td></tr>`;
 
   // Resumen inferior
   const map = new Map();
-  function add(mapRow, isPlan){
-    const k = `${mapRow.gestor||'(sin)'}__${mapRow.semana||''}`;
-    if(!map.has(k)) map.set(k,{gestor:mapRow.gestor||'(sin)', semana:mapRow.semana||'', plan:0, done:0, last:null});
+  function add(x,isPlan){
+    const k = `${x.gestor||'(sin)'}__${x.semana||''}`;
+    if(!map.has(k)) map.set(k,{gestor:x.gestor||'(sin)', semana:x.semana||'', plan:0, done:0, last:null});
     const obj = map.get(k);
     if(isPlan) obj.plan++; else obj.done++;
-    if(mapRow.fecha){ if(!obj.last || mapRow.fecha > obj.last) obj.last = mapRow.fecha; }
+    if(x.fecha){ if(!obj.last || x.fecha>obj.last) obj.last = x.fecha; }
   }
   for(const a of plan) add(a,true);
   for(const h of hechas) add(h,false);
 
-  const tbr = document.getElementById('rsTbdRes');
   const arr = Array.from(map.values()).sort((a,b)=> a.gestor===b.gestor? String(a.semana).localeCompare(String(b.semana)) : a.gestor.localeCompare(b.gestor));
-  tbr.innerHTML = arr.length? arr.map(r=>{
+  document.getElementById('rsTbdRes').innerHTML = arr.length? arr.map(r=>{
     const cov = r.plan>0? Math.round(r.done*100/r.plan):0;
     return `<tr><td>${r.gestor}</td><td>${r.semana}</td><td style="text-align:right">${r.plan}</td><td style="text-align:right">${r.done}</td><td style="text-align:right">${cov}%</td><td style="text-align:right">${r.last||'-'}</td></tr>`;
   }).join('') : `<tr><td colspan="6" style="text-align:center;color:#64748b">Sin datos</td></tr>`;
 }
 
-/* ===== Export ===== */
-function RS_export(){
+/* ===== Boot ===== */
+async function RS_bootResumen(){
+  // Lee filtros/tabla del Reporte
+  RS_enhanceReporteOnce();
+  RS_readReporte();
+  // Carga calendario
+  if(RS_agenda.length===0) await RS_loadAgenda();
+  // Render
+  RS_render();
+}
+
+(function observeModal(){
+  // Observa para enganchar mejoras del Reporte automáticamente
+  const obs = new MutationObserver(()=>{ RS_enhanceReporteOnce(); });
+  obs.observe(document.documentElement,{childList:true,subtree:true});
+})();
+
+// Eventos overlay
+document.getElementById('rsClose').onclick = ()=>{ document.getElementById('rsOverlay').style.display='none'; };
+document.getElementById('rsExport').onclick = ()=>{
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, XLSX.utils.table_to_sheet(document.getElementById('rsTblDet')), 'Detalle');
   XLSX.utils.book_append_sheet(wb, XLSX.utils.table_to_sheet(document.getElementById('rsTblRes')), 'Resumen');
@@ -4240,27 +4304,10 @@ function RS_export(){
     ['% Cobertura', document.getElementById('rsK3').textContent],
   ]), 'KPIs');
   XLSX.writeFile(wb, 'reporte_llamadas_resumen.xlsx');
-}
-
-/* ===== Boot & Eventos ===== */
-(async function RS_boot(){
-  // Botón para abrir el Resumen: usa cualquier botón con id=btnReporteResumen si ya existe; si no, añade uno en el menú
-  const btn = document.querySelector('#btnReporteResumen') || document.querySelector('[data-open-resumen]');
-  if(btn){
-    btn.addEventListener('click', async ()=>{
-      document.getElementById('rsOverlay').style.display='flex';
-      await RS_loadAgenda();
-      RS_readReporte(); // lee filtros/tabla actuales del modal Reporte
-      RS_renderAll();
-    });
-  }
-  document.getElementById('rsClose').onclick = ()=>{ document.getElementById('rsOverlay').style.display='none'; };
-  document.getElementById('rsSync').onclick  = ()=>{ RS_readReporte(); RS_renderAll(); };
-  document.getElementById('rsSemana').onchange = RS_renderAll;
-  document.getElementById('rsTabPend').onclick = (e)=>{ e.target.classList.add('active'); document.getElementById('rsTabReal').classList.remove('active'); RS_renderAll(); };
-  document.getElementById('rsTabReal').onclick = (e)=>{ e.target.classList.add('active'); document.getElementById('rsTabPend').classList.remove('active'); RS_renderAll(); };
-  document.getElementById('rsExport').onclick  = RS_export;
-})();
+};
+document.getElementById('rsSemana').onchange = RS_render;
+document.getElementById('rsTabPend').onclick = (e)=>{ e.target.classList.add('active'); document.getElementById('rsTabReal').classList.remove('active'); RS_render(); };
+document.getElementById('rsTabReal').onclick = (e)=>{ e.target.classList.add('active'); document.getElementById('rsTabPend').classList.remove('active'); RS_render(); };
 </script>
 
 </body>
