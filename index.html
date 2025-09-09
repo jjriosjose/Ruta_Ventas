@@ -4258,11 +4258,31 @@ function RS_render(){
     <tr><td>${r.cod}</td><td>${r.cliente||''}</td><td>${r.semana||''}</td><td>${r.dia||''}</td><td>${r.vendedor||''}</td><td>${r.gestor||''}</td><td style="text-align:right">${curTab==='pend'?1:0}</td></tr>`).join('')
     : `<tr><td colspan="7" style="text-align:center;color:#64748b">Sin datos</td></tr>`;
 
-  // Resumen inferior
+  // Resumen inferior (siempre mostrar semanas 1..4)
+  // Determinar gestors a mostrar
+  const gestors = (function(){
+    if(RS_gestorSel && RS_gestorSel !== '(todos)') return [RS_gestorSel];
+    const gFromAgenda = Array.from(new Set(plan.map(r=>r.gestor).filter(Boolean)));
+    const gFromHist   = Array.from(new Set(hechas.map(r=>r.gestor).filter(Boolean)));
+    const all = Array.from(new Set([...gFromAgenda, ...gFromHist]));
+    return all.length? all : ['(sin)'];
+  })();
+  const weeks = ['1','2','3','4'];
+
   const map = new Map();
+  // Presembrar 1..4 por gestor
+  for(const g of gestors){
+    for(const w of weeks){
+      const k = `${g}__${w}`;
+      if(!map.has(k)) map.set(k,{gestor:g, semana:w, plan:0, done:0, last:null});
+    }
+  }
   function add(x,isPlan){
-    const k = `${x.gestor||'(sin)'}__${x.semana||''}`;
-    if(!map.has(k)) map.set(k,{gestor:x.gestor||'(sin)', semana:x.semana||'', plan:0, done:0, last:null});
+    const g = x.gestor || '(sin)';
+    const w = String(x.semana || '');
+    if(!w) return;
+    const k = `${g}__${w}`;
+    if(!map.has(k)) map.set(k,{gestor:g, semana:w, plan:0, done:0, last:null});
     const obj = map.get(k);
     if(isPlan) obj.plan++; else obj.done++;
     if(x.fecha){ if(!obj.last || x.fecha>obj.last) obj.last = x.fecha; }
