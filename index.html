@@ -4212,11 +4212,11 @@ async function RS_loadAgenda(){
 function RS_filters(){ return {semana: document.getElementById('rsSemana').value}; }
 function RS_applyAgenda(rows){
   const {semana} = RS_filters();
-  const vend = RS_acc(RS_vendorSel), gest = RS_acc(RS_gestorSel);
+  const gest = RS_acc(RS_gestorSel);
   return rows.filter(r=>{
     if(semana!=="Todas" && String(r.semana)!==String(semana)) return false;
-    if(RS_vendorSel!=="(todos)" && r.vendedor_norm!==vend) return false;
-    if(RS_gestorSel!=="(todos)" && r.gestor_norm!==gest) return false;
+    // Ignoramos Vendedor para el plan (A realizar)
+    if(RS_gestorSel!="(todos)" && r.gestor_norm!==gest) return false;
     return true;
   });
 }
