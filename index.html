@@ -3491,70 +3491,87 @@ document.addEventListener('click', (ev)=>{
   }
 
 
-  function computeResumenAggregates(){
-    const st=ST();
-    const cal=Array.isArray(st.calendario)?st.calendario:[];
-    const calls=Array.isArray(st.calls)?st.calls:[];
+  
+function computeResumenAggregates(){
+  // Filtros
+  const fSem = document.getElementById('rwSemana')?.value || '';
+  const fVend = (document.getElementById('rwVendedor')?.value || '').toString().trim().toLowerCase();
+  const fGest = (document.getElementById('rwGestor')?.value || '').toString().trim().toLowerCase();
 
-    const fSemana = q('rwSemana')?.value || '';
-    const fVend = q('rwVendedor')?.value || '';
-    const fGes = q('rwGestor')?.value || '';
+  // Normalizadores
+  const N = s => (s==null?'':String(s)).trim();
+  const L = s => N(s).toLowerCase();
+  const W = s => {
+    const t=N(s);
+    // if already 1..4 just return
+    if(['1','2','3','4'].includes(t)) return t;
+    // fallback: derive from ISO date yyyy-mm-dd
+    const m = t.match(/(\d{4})-(\d{2})-(\d{2})/);
+    if(m){ const d=parseInt(m[3],10); return d<=7?'1':d<=14?'2':d<=21?'3':'4'; }
+    return '';
+  };
 
-    const fVendN = RZ.normName(fVend);
-    const fGesN = RZ.normName(fGes);
-    const weekFilter = fSemana? Number(fSemana) : null;
+  // Datos
+  const calRaw = (window.ST?.().calendario || window.ST?.().Calendario || []);
+  const callsRaw = (window.ST?.().calls || window.ST?.().Calls || []);
 
-    const matchVend = v => !fVendN or RZ.normName(v)===fVendN;
-    const matchGes  = g => !fGesN or RZ.normName(g)===fGesN;
-    const matchWeek = w => !weekFilter or Number(w)===weekFilter;
+  // PLAN (itinerario): contar filas de Calendario con Condicion="En Ruta"
+  // Campos tolerantes a mayúsculas. Semana se toma del campo "SEMANA" (1-4)
+  const cal = calRaw.map(r => ({
+    semana: W(r['SEMANA'] ?? r['Semana'] ?? r['N Semana'] ?? r['N_Semana'] ?? r['semana']),
+    vendedor: L(r['vendedor'] ?? r['Vendedor'] ?? r['VENDEDOR']),
+    gestor: L(r['gestor_servicio'] ?? r['Gestor'] ?? r['GESTOR_SERVICIO']),
+    condicion: L(r['Condicion'] ?? r['CONDICION'] ?? r['condicion']),
+    cod: N(r['Cod Empresa'] ?? r['COD EMPRESA'] ?? r['cod'] ?? r['Cod'])
+  })).filter(r => r.condicion === 'en ruta');  // solo "En Ruta"
 
-    // PLAN (Calendario)
-    const plan = new Map(); // key: gestor|sem -> count
-    const gestoresSet = new Set();
-    cal.forEach(r=>{
-      const vendedor = RZ.normKey(r,['vendedor','Vendedor','VENDEDOR']);
-      const gestor   = RZ.normKey(r,['gestor_servicio','Gestor','GESTOR_SERVICIO']);
-      const sem      = RZ.mapSemana4(RZ.normKey(r,['Semana','SEMANA','semana']));
-      if(!gestor || !sem) return;
-      if(!matchVend(vendedor)) return;
-      if(!matchGes(gestor)) return;
-      if(!matchWeek(sem)) return;
-      gestoresSet.add(gestor);
-      const k = gestor+'|'+sem;
-      plan.set(k,(plan.get(k)||0)+1);
+  // DONE (llamadas): desde Reporte
+  const calls = callsRaw.map(r => ({
+    semana: W(r['semana'] ?? r['N° Semana'] ?? r['N Semana'] ?? r['Semana'] ?? r['fecha/hora'] ?? r['Fecha/Hora']),
+    vendedor: L(r['vendedor'] ?? r['Vendedor'] ?? r['VENDEDOR']),
+    gestor: L(r['gestor'] ?? r['gestor_servicio'] ?? r['Gestor'] ?? r['GESTOR_SERVICIO']),
+    fecha: N(r['fecha/hora'] ?? r['Fecha/Hora'] ?? r['Fecha'] ?? r['datetime']),
+  }));
+
+  // Determinar conjunto de gestores (según filtro)
+  const gestores = Array.from(new Set(cal.map(r=>r.gestor).filter(Boolean).concat(calls.map(r=>r.gestor).filter(Boolean))))
+    .filter(g => !fGest || g===fGest);
+
+  // Armar siempre las 4 semanas
+  const semanasBase = ['1','2','3','4'];
+  const rows = [];
+
+  gestores.forEach(gest => {
+    semanasBase.forEach(sem => {
+      if(fSem && sem !== fSem) return;
+
+      // aplicar filtro vendedor opcional
+      const predVend = (v) => !fVend || v===fVend;
+
+      const plan = cal.filter(r => r.gestor===gest && r.semana===sem && predVend(r.vendedor)).length;
+
+      const done = calls.filter(r => r.gestor===gest && r.semana===sem && predVend(r.vendedor)).length;
+
+      // última llamada del par gestor/semana (si existe)
+      const last = calls.filter(r => r.gestor===gest && r.semana===sem && predVend(r.vendedor))
+                        .map(r => r.fecha).sort().slice(-1)[0] || '';
+
+      const cov = plan>0 ? Math.round((done/plan)*100) : 0;
+      rows.push({ gestor: gest.toUpperCase(), semana: sem, plan, done, cov, last });
     });
+  });
 
-    // DONE (Calls)
-    const done = new Map();
-    const last = new Map(); // key -> Date
-    calls.forEach(r=>{
-      const vendedor = RZ.normKey(r,['Vendedor','vendedor','VENDEDOR']);
-      const gestor   = RZ.normKey(r,['gestor','Gestor','GESTOR','gestor_servicio','GESTOR_SERVICIO']);
-      const sem      = RZ.getSemanaFromRow(r);
-      if(!gestor || !sem) return;
-      if(!matchVend(vendedor)) return;
-      if(!matchGes(gestor)) return;
-      if(!matchWeek(sem)) return;
-      gestoresSet.add(gestor);
-      const k = gestor+'|'+sem;
-      done.set(k,(done.get(k)||0)+1);
-      const d = RZ.parseDateLoose(RZ.normKey(r,['FechaHora','Fecha y hora','Fecha y Hora','Fecha','fecha','FECHA','fecha_hora','Fecha/Hora','fechaHora']));
-      if(d && (!last.has(k) || last.get(k) < d)) last.set(k,d);
-    });
+  // Ordenar por gestor y semana asc
+  rows.sort((a,b)=> (a.gestor.localeCompare(b.gestor) || (parseInt(a.semana)-parseInt(b.semana))));
 
-    // Build array per gestor with weeks 1..4 always
-    const gestores = Array.from(gestoresSet).sort((a,b)=>a.localeCompare(b,'es',{numeric:true}));
-    const rows = [];
-    gestores.forEach(g=>{
-      for(let w=1; w<=4; w++){
-        if(weekFilter && w!==weekFilter) continue;
-        const k = g+'|'+w;
-        const p = plan.get(k)||0;
-        const d = done.get(k)||0;
-        const cov = p>0 ? Math.round((d/p)*100) : 0;
-        const lastStr = last.has(k) ? new Date(last.get(k)).toLocaleString() : '';
-        rows.push({gestor:g, semana:w, plan:p, done:d, cov:cov, last:lastStr});
-      }
+  // Totales
+  const totalPlan = rows.reduce((a,r)=>a+r.plan,0);
+  const totalDone = rows.reduce((a,r)=>a+r.done,0);
+  const totalCov  = totalPlan>0 ? Math.round((totalDone/totalPlan)*100) : 0;
+
+  return { rows, totalPlan, totalDone, totalCov };
+}
+
     });
 
     // Totals
@@ -3682,47 +3699,87 @@ document.addEventListener('click', (ev)=>{
     if(sG){ const cur=sG.value; sG.innerHTML='<option value=\"\">Todos</option>'+Array.from(ges).sort((a,b)=>a.localeCompare(b,'es',{numeric:true})).map(x=>`<option value=\"${x}\">${x}</option>`).join(''); if(ges.has(cur)) sG.value=cur; }
   }
 
-  function computeResumenAggregates(){
-    const st=ST();
-    const cal = Array.isArray(st.calendario)?st.calendario:(Array.isArray(st.Calendario)?st.Calendario:[]);
-    const calls = Array.isArray(st.calls)?st.calls:(Array.isArray(st.Calls)?st.Calls:[]);
-    const fSemana = q('rwSemana')?.value || '';
-    const fVend = q('rwVendedor')?.value || '';
-    const fGes = q('rwGestor')?.value || '';
-    const fVendN = RZ.normName(fVend), fGesN = RZ.normName(fGes);
-    const weekFilter = fSemana? Number(fSemana): null;
-    const matchVend = v => !fVendN || RZ.normName(v)===fVendN;
-    const matchGes  = g => !fGesN || RZ.normName(g)===fGesN;
-    const matchWeek = w => !weekFilter || Number(w)===weekFilter;
+  
+function computeResumenAggregates(){
+  // Filtros
+  const fSem = document.getElementById('rwSemana')?.value || '';
+  const fVend = (document.getElementById('rwVendedor')?.value || '').toString().trim().toLowerCase();
+  const fGest = (document.getElementById('rwGestor')?.value || '').toString().trim().toLowerCase();
 
-    const plan=new Map(), done=new Map(), last=new Map(), gestoresSet=new Set();
+  // Normalizadores
+  const N = s => (s==null?'':String(s)).trim();
+  const L = s => N(s).toLowerCase();
+  const W = s => {
+    const t=N(s);
+    // if already 1..4 just return
+    if(['1','2','3','4'].includes(t)) return t;
+    // fallback: derive from ISO date yyyy-mm-dd
+    const m = t.match(/(\d{4})-(\d{2})-(\d{2})/);
+    if(m){ const d=parseInt(m[3],10); return d<=7?'1':d<=14?'2':d<=21?'3':'4'; }
+    return '';
+  };
 
-    cal.forEach(r=>{
-      const v=RZ.normKey(r,['vendedor','Vendedor','VENDEDOR']);
-      const g=RZ.normKey(r,['gestor_servicio','Gestor','GESTOR_SERVICIO']);
-      const w=RZ.mapSemana4(RZ.normKey(r,['Semana','SEMANA','semana']));
-      if(!g||!w) return; if(!matchVend(v)||!matchGes(g)||!matchWeek(w)) return;
-      gestoresSet.add(g); const k=g+'|'+w; plan.set(k,(plan.get(k)||0)+1);
+  // Datos
+  const calRaw = (window.ST?.().calendario || window.ST?.().Calendario || []);
+  const callsRaw = (window.ST?.().calls || window.ST?.().Calls || []);
+
+  // PLAN (itinerario): contar filas de Calendario con Condicion="En Ruta"
+  // Campos tolerantes a mayúsculas. Semana se toma del campo "SEMANA" (1-4)
+  const cal = calRaw.map(r => ({
+    semana: W(r['SEMANA'] ?? r['Semana'] ?? r['N Semana'] ?? r['N_Semana'] ?? r['semana']),
+    vendedor: L(r['vendedor'] ?? r['Vendedor'] ?? r['VENDEDOR']),
+    gestor: L(r['gestor_servicio'] ?? r['Gestor'] ?? r['GESTOR_SERVICIO']),
+    condicion: L(r['Condicion'] ?? r['CONDICION'] ?? r['condicion']),
+    cod: N(r['Cod Empresa'] ?? r['COD EMPRESA'] ?? r['cod'] ?? r['Cod'])
+  })).filter(r => r.condicion === 'en ruta');  // solo "En Ruta"
+
+  // DONE (llamadas): desde Reporte
+  const calls = callsRaw.map(r => ({
+    semana: W(r['semana'] ?? r['N° Semana'] ?? r['N Semana'] ?? r['Semana'] ?? r['fecha/hora'] ?? r['Fecha/Hora']),
+    vendedor: L(r['vendedor'] ?? r['Vendedor'] ?? r['VENDEDOR']),
+    gestor: L(r['gestor'] ?? r['gestor_servicio'] ?? r['Gestor'] ?? r['GESTOR_SERVICIO']),
+    fecha: N(r['fecha/hora'] ?? r['Fecha/Hora'] ?? r['Fecha'] ?? r['datetime']),
+  }));
+
+  // Determinar conjunto de gestores (según filtro)
+  const gestores = Array.from(new Set(cal.map(r=>r.gestor).filter(Boolean).concat(calls.map(r=>r.gestor).filter(Boolean))))
+    .filter(g => !fGest || g===fGest);
+
+  // Armar siempre las 4 semanas
+  const semanasBase = ['1','2','3','4'];
+  const rows = [];
+
+  gestores.forEach(gest => {
+    semanasBase.forEach(sem => {
+      if(fSem && sem !== fSem) return;
+
+      // aplicar filtro vendedor opcional
+      const predVend = (v) => !fVend || v===fVend;
+
+      const plan = cal.filter(r => r.gestor===gest && r.semana===sem && predVend(r.vendedor)).length;
+
+      const done = calls.filter(r => r.gestor===gest && r.semana===sem && predVend(r.vendedor)).length;
+
+      // última llamada del par gestor/semana (si existe)
+      const last = calls.filter(r => r.gestor===gest && r.semana===sem && predVend(r.vendedor))
+                        .map(r => r.fecha).sort().slice(-1)[0] || '';
+
+      const cov = plan>0 ? Math.round((done/plan)*100) : 0;
+      rows.push({ gestor: gest.toUpperCase(), semana: sem, plan, done, cov, last });
     });
+  });
 
-    calls.forEach(r=>{
-      const v=RZ.normKey(r,['Vendedor','vendedor','VENDEDOR']);
-      const g=RZ.normKey(r,['gestor','Gestor','GESTOR','gestor_servicio','GESTOR_SERVICIO']);
-      const w=RZ.getSemanaFromRow(r);
-      if(!g||!w) return; if(!matchVend(v)||!matchGes(g)||!matchWeek(w)) return;
-      gestoresSet.add(g); const k=g+'|'+w; done.set(k,(done.get(k)||0)+1);
-      const d = RZ.parseDateLoose(RZ.normKey(r,['FechaHora','Fecha y hora','Fecha y Hora','Fecha','fecha','FECHA','fecha_hora','Fecha/Hora','fechaHora']));
-      if(d && (!last.has(k) || last.get(k) < d)) last.set(k,d);
-    });
+  // Ordenar por gestor y semana asc
+  rows.sort((a,b)=> (a.gestor.localeCompare(b.gestor) || (parseInt(a.semana)-parseInt(b.semana))));
 
-    const gestores = Array.from(gestoresSet).sort((a,b)=>a.localeCompare(b,'es',{numeric:true}));
-    const rows=[];
-    gestores.forEach(g=>{
-      for(let w=1; w<=4; w++){
-        if(weekFilter && w!==weekFilter) continue;
-        const k=g+'|'+w, p=plan.get(k)||0, d=done.get(k)||0, cov=p>0?Math.round((d/p)*100):0;
-        rows.push({gestor:g, semana:w, plan:p, done:d, cov:cov, last:last.has(k)? new Date(last.get(k)).toLocaleString(): ''});
-      }
+  // Totales
+  const totalPlan = rows.reduce((a,r)=>a+r.plan,0);
+  const totalDone = rows.reduce((a,r)=>a+r.done,0);
+  const totalCov  = totalPlan>0 ? Math.round((totalDone/totalPlan)*100) : 0;
+
+  return { rows, totalPlan, totalDone, totalCov };
+}
+
     });
     const totalPlan=rows.reduce((a,r)=>a+r.plan,0), totalDone=rows.reduce((a,r)=>a+r.done,0);
     return {rows, totalPlan, totalDone, totalCov: totalPlan>0? Math.round((totalDone/totalPlan)*100) : 0};
@@ -3849,63 +3906,87 @@ document.addEventListener('click', (ev)=>{
     const selG = $('#rwGestor'); if(selG && selG.children.length<=1){ selG.innerHTML = '<option value=\"\">Todos</option>'+ gestores.map(v=>`<option>${v}</option>`).join(''); }
   }
 
-  function computeResumenAggregates(){
-    const fSem = $('#rwSemana')?.value || '';
-    const fVend= $('#rwVendedor')?.value || '';
-    const fGest= $('#rwGestor')?.value || '';
+  
+function computeResumenAggregates(){
+  // Filtros
+  const fSem = document.getElementById('rwSemana')?.value || '';
+  const fVend = (document.getElementById('rwVendedor')?.value || '').toString().trim().toLowerCase();
+  const fGest = (document.getElementById('rwGestor')?.value || '').toString().trim().toLowerCase();
 
-    // Plan (Calendario)
-    const planF = getCalendario().map(r=>({
-      semana: mapWeek(get(r, ['N Semana','Semana','SEMANA','semana','NSemana','N_Semana'])),
-      vendedor: norm(get(r,['Vendedor','VENDEDOR','vendedor'])),
-      gestor: norm(get(r,['gestor_servicio','Gestor','GESTOR_SERVICIO']))
-    })).filter(p=>{
-      if(fSem && String(p.semana)!==String(fSem)) return false;
-      if(fVend && p.vendedor!==fVend) return false;
-      if(fGest && p.gestor!==fGest) return false;
-      return true;
+  // Normalizadores
+  const N = s => (s==null?'':String(s)).trim();
+  const L = s => N(s).toLowerCase();
+  const W = s => {
+    const t=N(s);
+    // if already 1..4 just return
+    if(['1','2','3','4'].includes(t)) return t;
+    // fallback: derive from ISO date yyyy-mm-dd
+    const m = t.match(/(\d{4})-(\d{2})-(\d{2})/);
+    if(m){ const d=parseInt(m[3],10); return d<=7?'1':d<=14?'2':d<=21?'3':'4'; }
+    return '';
+  };
+
+  // Datos
+  const calRaw = (window.ST?.().calendario || window.ST?.().Calendario || []);
+  const callsRaw = (window.ST?.().calls || window.ST?.().Calls || []);
+
+  // PLAN (itinerario): contar filas de Calendario con Condicion="En Ruta"
+  // Campos tolerantes a mayúsculas. Semana se toma del campo "SEMANA" (1-4)
+  const cal = calRaw.map(r => ({
+    semana: W(r['SEMANA'] ?? r['Semana'] ?? r['N Semana'] ?? r['N_Semana'] ?? r['semana']),
+    vendedor: L(r['vendedor'] ?? r['Vendedor'] ?? r['VENDEDOR']),
+    gestor: L(r['gestor_servicio'] ?? r['Gestor'] ?? r['GESTOR_SERVICIO']),
+    condicion: L(r['Condicion'] ?? r['CONDICION'] ?? r['condicion']),
+    cod: N(r['Cod Empresa'] ?? r['COD EMPRESA'] ?? r['cod'] ?? r['Cod'])
+  })).filter(r => r.condicion === 'en ruta');  // solo "En Ruta"
+
+  // DONE (llamadas): desde Reporte
+  const calls = callsRaw.map(r => ({
+    semana: W(r['semana'] ?? r['N° Semana'] ?? r['N Semana'] ?? r['Semana'] ?? r['fecha/hora'] ?? r['Fecha/Hora']),
+    vendedor: L(r['vendedor'] ?? r['Vendedor'] ?? r['VENDEDOR']),
+    gestor: L(r['gestor'] ?? r['gestor_servicio'] ?? r['Gestor'] ?? r['GESTOR_SERVICIO']),
+    fecha: N(r['fecha/hora'] ?? r['Fecha/Hora'] ?? r['Fecha'] ?? r['datetime']),
+  }));
+
+  // Determinar conjunto de gestores (según filtro)
+  const gestores = Array.from(new Set(cal.map(r=>r.gestor).filter(Boolean).concat(calls.map(r=>r.gestor).filter(Boolean))))
+    .filter(g => !fGest || g===fGest);
+
+  // Armar siempre las 4 semanas
+  const semanasBase = ['1','2','3','4'];
+  const rows = [];
+
+  gestores.forEach(gest => {
+    semanasBase.forEach(sem => {
+      if(fSem && sem !== fSem) return;
+
+      // aplicar filtro vendedor opcional
+      const predVend = (v) => !fVend || v===fVend;
+
+      const plan = cal.filter(r => r.gestor===gest && r.semana===sem && predVend(r.vendedor)).length;
+
+      const done = calls.filter(r => r.gestor===gest && r.semana===sem && predVend(r.vendedor)).length;
+
+      // última llamada del par gestor/semana (si existe)
+      const last = calls.filter(r => r.gestor===gest && r.semana===sem && predVend(r.vendedor))
+                        .map(r => r.fecha).sort().slice(-1)[0] || '';
+
+      const cov = plan>0 ? Math.round((done/plan)*100) : 0;
+      rows.push({ gestor: gest.toUpperCase(), semana: sem, plan, done, cov, last });
     });
-    const planMap=new Map();
-    planF.forEach(p=>{ const k=p.gestor+'|'+(p.semana||''); planMap.set(k,(planMap.get(k)||0)+1); });
+  });
 
-    // Realizadas (Llamadas)
-    const calls = getCalls().map(r=>({
-      semana: String(r.semana||''),
-      vendedor: norm(r.vendedor||''),
-      gestor: norm(r.gestor||r.gestor_servicio||''),
-      fecha: toDate(r.fecha_hora||r.fecha||r['Fecha/Hora']||r['Fecha']||'')
-    })).filter(c=>{
-      if(fSem && String(c.semana)!==String(fSem)) return false;
-      if(fVend && c.vendedor!==fVend) return false;
-      if(fGest && c.gestor!==fGest) return false;
-      return true;
-    });
-    const doneMap=new Map(), lastMap=new Map();
-    calls.forEach(c=>{
-      const k=c.gestor+'|'+(c.semana||'');
-      doneMap.set(k,(doneMap.get(k)||0)+1);
-      const p=lastMap.get(k); if(c.fecha && (!p || c.fecha>p)) lastMap.set(k,c.fecha);
-    });
+  // Ordenar por gestor y semana asc
+  rows.sort((a,b)=> (a.gestor.localeCompare(b.gestor) || (parseInt(a.semana)-parseInt(b.semana))));
 
-    // Unir claves
-    const keys=new Set([...planMap.keys(), ...doneMap.keys()]);
-    const rows=[];
-    keys.forEach(k=>{
-      const [gestor, semana] = k.split('|');
-      const a = planMap.get(k)||0;
-      const r = doneMap.get(k)||0;
-      const cov = a? (r/a*100) : (r?100:0);
-      const last = lastMap.get(k) ? lastMap.get(k).toLocaleString() : '-';
-      rows.push({gestor, semana, plan:a, done:r, cov: +cov.toFixed(0), last});
-    });
-    rows.sort((x,y)=> x.gestor.localeCompare(y.gestor,'es',{numeric:true}) || String(x.semana).localeCompare(String(y.semana),'es',{numeric:true}));
+  // Totales
+  const totalPlan = rows.reduce((a,r)=>a+r.plan,0);
+  const totalDone = rows.reduce((a,r)=>a+r.done,0);
+  const totalCov  = totalPlan>0 ? Math.round((totalDone/totalPlan)*100) : 0;
 
-    const totalPlan = rows.reduce((s,x)=>s+x.plan,0);
-    const totalDone = rows.reduce((s,x)=>s+x.done,0);
-    const totalCov  = totalPlan? Math.round(totalDone*100/totalPlan) : (totalDone?100:0);
+  return { rows, totalPlan, totalDone, totalCov };
+}
 
-    return {rows, totalPlan, totalDone, totalCov, planFCount: planF.length, callsCount: calls.length};
-  }
 
   function renderResumenKpisAndChips(agg){
     const ids = {kpiPlan:agg.totalPlan, kpiDone:agg.totalDone, kpiCov:agg.totalCov+'%', rwPlan:agg.totalPlan, rwDone:agg.totalDone, rwCov:agg.totalCov+'%'};
