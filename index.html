@@ -4310,5 +4310,33 @@ document.getElementById('rsTabPend').onclick = (e)=>{ e.target.classList.add('ac
 document.getElementById('rsTabReal').onclick = (e)=>{ e.target.classList.add('active'); document.getElementById('rsTabPend').classList.remove('active'); RS_render(); };
 </script>
 
+
+<script>
+// Mostrar banner de estado (carga de Usuarios y Calendario) para entornos como GitHub Pages
+(function statusBanner(){
+  const bar = document.createElement('div');
+  bar.id = 'rsStatus';
+  bar.style.cssText = 'position:fixed;right:10px;bottom:10px;background:#111827;color:#fff;padding:8px 10px;border-radius:8px;font-size:12px;opacity:.9;z-index:99999';
+  bar.textContent = 'Iniciando…';
+  document.body.appendChild(bar);
+  function set(t){ if(bar) bar.textContent = t; }
+  window.__setRSStatus = set;
+
+  // Pre-flight: intenta leer hoja de USUARIOS; si falla (CORS/red), habilita DEMO automáticamente
+  const usersUrl = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vSGjr-XdLSamHpGQfoORmLfntJbLd-UbFpD7NdMM14x2JdMhxOYHTWQBlhYCMDu0ZTy3AYS-1Y3q91Y/pub?gid=1395226434&single=true&output=csv';
+  fetch(usersUrl, {mode:'cors'})
+    .then(r=>{ if(!r.ok) throw new Error('HTTP '+r.status); return r.text(); })
+    .then(()=>{ localStorage.setItem('cfg.mode','cloud'); localStorage.setItem('cfg.users',usersUrl); set('Usuarios: online • modo cloud'); 
+      setTimeout(()=>{ bar.remove(); }, 2500);
+    })
+    .catch(()=>{
+      // fallback demo
+      localStorage.setItem('cfg.mode','local');
+      set('No se pudo cargar Usuarios → modo demo'); 
+      setTimeout(()=>{ bar.remove(); }, 3500);
+    });
+})();
+</script>
+
 </body>
 </html>
