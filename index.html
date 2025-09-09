@@ -3957,5 +3957,143 @@ document.addEventListener('click', (ev)=>{
 })();
 </script>
 
+
+<!-- ===== Auto-config & Reporte Enhancer ===== -->
+<script>
+/* ---------- Forzar modo cloud + URL de Usuarios ---------- */
+try{
+  localStorage.setItem('cfg.mode', 'cloud');
+  localStorage.setItem('cfg.users', 'https://docs.google.com/spreadsheets/d/e/2PACX-1vSGjr-XdLSamHpGQfoORmLfntJbLd-UbFpD7NdMM14x2JdMhxOYHTWQBlhYCMDu0ZTy3AYS-1Y3q91Y/pub?gid=1395226434&single=true&output=csv');
+}catch(e){ console.warn('localStorage no disponible', e); }
+
+/* ---------- Utilidades ---------- */
+function weekOfMonthFromDateStr(s){
+  // s esperado tipo "2025-09-04T10:14" o "2025-09-04 10:14" o "2025-09-04"
+  if(!s) return '';
+  const parts = s.replace('T',' ').split(' ')[0].split('-');
+  if(parts.length<3) return '';
+  const y = +parts[0], m = (+parts[1])-1, d = +parts[2];
+  const dt = new Date(y, m, d);
+  if(isNaN(dt)) return '';
+  const day = dt.getDate();
+  if(day<=7) return '1';
+  if(day<=14) return '2';
+  if(day<=21) return '3';
+  return '4';
+}
+
+function ensureSelectFromInput(container, placeholderId, options){
+  // Busca input/select por id aproximado dentro de container y lo convierte a <select> con options
+  const ids = [placeholderId, placeholderId.toLowerCase(), placeholderId.toUpperCase()];
+  let el = null;
+  for(const id of ids){
+    el = container.querySelector('#'+id);
+    if(el) break;
+  }
+  if(!el){
+    // buscar por label text
+    const labels = Array.from(container.querySelectorAll('label'));
+    const lab = labels.find(l=> (l.textContent||'').trim().toLowerCase().includes(placeholderId.toLowerCase()));
+    if(lab){
+      const n = lab.getAttribute('for');
+      if(n) el = container.querySelector('#'+n);
+      if(!el){
+        // hermano siguiente input
+        const next = lab.parentElement.querySelector('input,select');
+        if(next) el = next;
+      }
+    }
+  }
+  if(!el) return null;
+  if(el.tagName.toLowerCase()==='select'){
+    el.innerHTML = '';
+  }else{
+    const sel = document.createElement('select');
+    sel.className = el.className || '';
+    sel.id = el.id || placeholderId;
+    sel.name = el.name || placeholderId;
+    el.replaceWith(sel);
+    el = sel;
+  }
+  const uniq = Array.from(new Set(['(todos)', ...options.filter(Boolean).sort()]));
+  el.innerHTML = uniq.map(v=>`<option value="${v}">${v}</option>`).join('');
+  return el;
+}
+
+/* ---------- Mejora del modal Reporte ---------- */
+(function enhanceReporte(){
+  // Intentamos enganchar cuando el modal se abre: observa el DOM
+  const obs = new MutationObserver(()=>{
+    const modal = document.querySelector('[role="dialog"], .modal, .reporte-llamadas, .dialog-reporte');
+    if(!modal) return;
+
+    const table = modal.querySelector('table');
+    const thead = table ? table.tHead : null;
+    const tbody = table ? table.tBodies[0] : null;
+    if(!thead || !tbody) return;
+
+    // Indices de columnas por cabecera
+    const headers = Array.from(thead.querySelectorAll('th')).map(th => (th.textContent||'').trim().toLowerCase());
+    const idxFecha = headers.indexOf('fecha/hora');
+    const idxVendedor = headers.indexOf('vendedor');
+    const idxGestor = headers.indexOf('gestor');
+    const haveSemana = headers.some(h=> h.includes('semana'));
+
+    // 1) Insertar columna "N° Semana" si no existe
+    if(!haveSemana){
+      const th = document.createElement('th');
+      th.textContent = 'N° Semana';
+      // Insertamos después de Gestor (si existe) o al final
+      if(idxGestor >= 0){
+        thead.rows[0].insertBefore(th, thead.rows[0].children[idxGestor+1] || null);
+      }else{
+        thead.rows[0].appendChild(th);
+      }
+      // Agregar celdas
+      for(const tr of Array.from(tbody.rows)){
+        const td = document.createElement('td');
+        // Intentamos leer data-semana; si no, calcular por fecha
+        let semana = '';
+        if(tr.dataset && tr.dataset.semana) semana = tr.dataset.semana;
+        if(!semana && idxFecha>=0){
+          const s = (tr.children[idxFecha]?.textContent||'').trim().replace(/\s+/g,' ');
+          semana = weekOfMonthFromDateStr(s);
+        }
+        td.textContent = semana || '';
+        if(idxGestor >= 0){
+          tr.insertBefore(td, tr.children[idxGestor+1] || null);
+        }else{
+          tr.appendChild(td);
+        }
+      }
+    }
+
+    // 2) Convertir filtros de Vendedor/Gestor en dropdowns (options desde la tabla)
+    const vendedores = idxVendedor>=0 ? Array.from(tbody.rows).map(r => (r.children[idxVendedor]?.textContent||'').trim()).filter(Boolean) : [];
+    const gestores   = idxGestor>=0 ? Array.from(tbody.rows).map(r => (r.children[idxGestor]?.textContent||'').trim()).filter(Boolean) : [];
+
+    const filtersContainer = modal; // amplio, buscar dentro del modal
+    const selVend = ensureSelectFromInput(filtersContainer, 'Vendedor', vendedores);
+    const selGest = ensureSelectFromInput(filtersContainer, 'Gestor', gestores);
+
+    function applyFilter(){
+      const v = selVend ? (selVend.value || '(todos)') : '(todos)';
+      const g = selGest ? (selGest.value || '(todos)') : '(todos)';
+      for(const tr of Array.from(tbody.rows)){
+        const vtxt = idxVendedor>=0 ? (tr.children[idxVendedor]?.textContent||'').trim() : '';
+        const gtxt = idxGestor>=0 ? (tr.children[idxGestor]?.textContent||'').trim() : '';
+        const okV = (v==='(todos)') || (vtxt===v);
+        const okG = (g==='(todos)') || (gtxt===g);
+        tr.style.display = (okV && okG) ? '' : 'none';
+      }
+    }
+    if(selVend) selVend.onchange = applyFilter;
+    if(selGest) selGest.onchange = applyFilter;
+  });
+
+  obs.observe(document.documentElement, {childList:true, subtree:true});
+})();
+</script>
+
 </body>
 </html>
