@@ -3985,7 +3985,7 @@ document.addEventListener('click', (ev)=>{
       <div style="display:flex;justify-content:space-between;align-items:center">
         <div class="rs-title">📞 Reporte de llamadas — <span class="rs-muted">Resumen (Semanal)</span></div>
         <div style="display:flex;gap:6px">
-          <span id="rsChips" class="rs-muted" style="align-self:center;font-size:12px"></span>
+          <span id="rsChips" class="rs-muted" style="align-self:center;font-size:12px"></span><span id="rsDiag" class="rs-muted" style="align-self:center;font-size:12px;margin-left:8px;"></span>
           <button id="rsExport" class="rs-pill">Exportar Excel</button>
           <button id="rsClose" class="rs-pill">Cerrar</button>
         </div>
@@ -4000,12 +4000,12 @@ document.addEventListener('click', (ev)=>{
           </select>
         </div>
         <div class="rs-card">
-          <div class="rs-muted" style="font-size:12px">Vendedor (Reporte)</div>
-          <div id="rsVendTag" class="rs-pill">—</div>
+          <div class="rs-muted" style="font-size:12px">Vendedor</div>
+          <select id="rsVendSel" style="width:100%;padding:8px;border:1px solid #e5e7eb;border-radius:10px"></select>
         </div>
         <div class="rs-card">
-          <div class="rs-muted" style="font-size:12px">Gestor (Reporte)</div>
-          <div id="rsGestTag" class="rs-pill">—</div>
+          <div class="rs-muted" style="font-size:12px">Gestor</div>
+          <select id="rsGestSel" style="width:100%;padding:8px;border:1px solid #e5e7eb;border-radius:10px"></select>
         </div>
         <div class="rs-card">
           <div class="rs-muted" style="font-size:12px">Acciones</div>
@@ -4232,13 +4232,15 @@ function RS_applyHist(rows){
 }
 
 function RS_render(){
-  const agendaF = RS_applyAgenda(RS_agenda).filter(a=>a.condicion_norm.includes('ruta'));
+  const diagTotal = RS_agenda.length; const agendaRuta = RS_agenda.filter(a=>a.condicion_norm.includes('ruta'));
+  const agendaF = RS_applyAgenda(agendaRuta);
   // Dedup A realizar por Cod+Semana
   const seen = new Set(); const plan = [];
   for(const a of agendaF){ const k = `${a.cod}__${a.semana}`; if(!seen.has(k)){ seen.add(k); plan.push(a);} }
   const hechas = RS_applyHist(RS_hist);
 
   document.getElementById('rsChips').textContent = `Plan: ${plan.length} filas • Llamadas: ${hechas.length}`;
+  document.getElementById('rsDiag').textContent = `(Calendario: ${diagTotal} • En Ruta: ${agendaRuta.length} • Post-filtros: ${agendaF.length})`;
 
   // KPIs
   const k1 = plan.length, k2 = hechas.length, k3 = k1>0? Math.round(k2*100/k1):0;
@@ -4282,6 +4284,7 @@ async function RS_bootResumen(){
   RS_readReporte();
   // Carga calendario
   if(RS_agenda.length===0) await RS_loadAgenda();
+  RS_populateVG();
   // Render
   RS_render();
 }
@@ -4291,6 +4294,26 @@ async function RS_bootResumen(){
   const obs = new MutationObserver(()=>{ RS_enhanceReporteOnce(); });
   obs.observe(document.documentElement,{childList:true,subtree:true});
 })();
+
+
+// Populate Vendedor/Gestor selects using Calendario values and default to Reporte's selection
+function RS_populateVG(){
+  const vendSel = document.getElementById('rsVendSel');
+  const gestSel = document.getElementById('rsGestSel');
+
+  const vVals = Array.from(new Set(RS_agenda.map(r=>r.vendedor).filter(Boolean))).sort();
+  const gVals = Array.from(new Set(RS_agenda.map(r=>r.gestor).filter(Boolean))).sort();
+
+  vendSel.innerHTML = ['(todos)', ...vVals].map(v=>`<option>${v}</option>`).join('');
+  gestSel.innerHTML = ['(todos)', ...gVals].map(v=>`<option>${v}</option>`).join('');
+
+  // defaults from Reporte (if available)
+  if(RS_vendorSel && vVals.includes(RS_vendorSel)) vendSel.value = RS_vendorSel; else vendSel.value='(todos)';
+  if(RS_gestorSel && gVals.includes(RS_gestorSel)) gestSel.value = RS_gestorSel; else gestSel.value='(todos)';
+
+  vendSel.onchange = ()=>{ RS_vendorSel = vendSel.value; RS_render(); };
+  gestSel.onchange = ()=>{ RS_gestorSel = gestSel.value; RS_render(); };
+}
 
 // Eventos overlay
 document.getElementById('rsClose').onclick = ()=>{ document.getElementById('rsOverlay').style.display='none'; };
