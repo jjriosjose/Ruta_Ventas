@@ -912,7 +912,7 @@ function doLogin(){
     if(!u){ showErr('Ingrese el usuario.'); return; }
     if(!p){ showErr('Ingrese la contraseña.'); return; }
 
-    const norm = (s)=>String(s||'').normalize('NFD').replace(/\p{Diacritic}/gu,'').toLowerCase().trim();
+    const norm = (s)=>String(s||'').normalize('NFD').replace(/[\u0300-\u036f]/gu,'').toLowerCase().trim();
 
     if(!Array.isArray(STATE.users) || !STATE.users.length){
       if(CONFIG && CONFIG.mode==='sheets' && CONFIG.sheets && CONFIG.sheets.usuarios){
@@ -1093,7 +1093,7 @@ async function init(){
       const p = (document.getElementById('loginPass')||{}).value||'';
       // reconstruir STATE.users con el mapper actual
       STATE.users = rows.slice(1).map(mapUserRecord);
-      const norm = s=>String(s||'').normalize('NFD').replace(/\p{Diacritic}/gu,'').toLowerCase().trim();
+      const norm = s=>String(s||'').normalize('NFD').replace(/[\u0300-\u036f]/gu,'').toLowerCase().trim();
       const cand = STATE.users.find(r=>[r.Usuario,r.Correo,r.Email,r.Login,r.Vendedor,r.Gestor].some(x=>norm(x)===norm(u)));
       const passCol = STATE.users[0] ? Object.keys(STATE.users[0]).find(k=>k.toLowerCase().includes('pass')||k.toLowerCase().includes('clave')||k.toLowerCase().includes('contra')) : 'Password';
       const pass = cand ? (cand.Password||cand.Clave||'') : '';
@@ -1531,7 +1531,7 @@ function guardarNuevoCliente() {
 // Normalización de día
 const __DIAS_OK = ['lunes','martes','miercoles','miércoles','jueves','viernes','sabado','sábado','domingo'];
 function __normDia(d){
-  const s = (String(d||'').normalize('NFD').replace(/\p{Diacritic}/gu,'').toLowerCase());
+  const s = (String(d||'').normalize('NFD').replace(/[\u0300-\u036f]/gu,'').toLowerCase());
   return __DIAS_OK.includes(s) ? s : String(d||'').toLowerCase();
 }
 
@@ -1827,7 +1827,7 @@ document.addEventListener('click', (ev)=>{
   // Normalización de día (mismo helper que el modal)
   const RR_DIAS_OK = ['lunes','martes','miercoles','miércoles','jueves','viernes','sabado','sábado','domingo'];
   function rrNormDia(d){
-    const s = (String(d||'').normalize('NFD').replace(/\p{Diacritic}/gu,'').toLowerCase());
+    const s = (String(d||'').normalize('NFD').replace(/[\u0300-\u036f]/gu,'').toLowerCase());
     return RR_DIAS_OK.includes(s) ? s : String(d||'').toLowerCase();
   }
 
@@ -2016,7 +2016,7 @@ document.addEventListener('click', (ev)=>{
   }
   function normStr(s){ return String(s||'').trim(); }
   function normDia(d){
-    return String(d||'').normalize('NFD').replace(/\p{Diacritic}/gu,'').toLowerCase();
+    return String(d||'').normalize('NFD').replace(/[\u0300-\u036f]/gu,'').toLowerCase();
   }
   const K = {
     semana: ['Semana','N Semana','N_Semana','n_semana','n semana','semana'],
@@ -2180,7 +2180,7 @@ document.addEventListener('click', (ev)=>{
   function $(sel, root){ return (root||document).querySelector(sel); }
   function $all(sel, root){ return Array.from((root||document).querySelectorAll(sel)); }
   function norm(s){ return String(s||'').trim(); }
-  function normDia(d){ return String(d||'').normalize('NFD').replace(/\p{Diacritic}/gu,'').toLowerCase(); }
+  function normDia(d){ return String(d||'').normalize('NFD').replace(/[\u0300-\u036f]/gu,'').toLowerCase(); }
   function csvEscape(v){ if(v==null) return ''; const s=String(v); return (s.includes(',')||s.includes('"')||s.includes('\n'))?('"'+s.replace(/"/g,'""')+'"'):s; }
   function weekOfMonth(date){ if(!(date instanceof Date)||isNaN(date)) return ''; const w = 1 + Math.floor((date.getDate()-1)/7); return String(Math.min(Math.max(w,1),4)); }
 
@@ -4134,7 +4134,7 @@ try{
 /* ===== Helpers ===== */
 const RS_AGENDA_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vSGjr-XdLSamHpGQfoORmLfntJbLd-UbFpD7NdMM14x2JdMhxOYHTWQBlhYCMDu0ZTy3AYS-1Y3q91Y/pub?gid=223681507&single=true&output=csv"; // Calendario
 const RS_norm = s => (s??"").toString().trim();
-const RS_acc  = s => RS_norm(s).normalize('NFD').replace(/\\p{Diacritic}/gu,'').toLowerCase();
+const RS_acc  = s => RS_norm(s).normalize('NFD').replace(/\[\u0300-\u036f]/gu,'').toLowerCase();
 function RS_parseCSV(url){
   return new Promise((resolve,reject)=>{
     Papa.parse(url,{download:true,header:true,skipEmptyLines:true,
