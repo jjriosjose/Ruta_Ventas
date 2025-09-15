@@ -1241,5 +1241,221 @@ body.show-resumen #screenResumenSem > .card {
 })();
 </script>
 
+
+<!-- Leaflet CSS/JS -->
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-1AithKd8W+2eg2qcG1LrL6Z7aoJ5X4l7ZtP3S2m0m0A=" crossorigin=""></script>
+
+<style>
+  #gwMap { height: 480px; border-radius: 12px; border: 1px solid var(--border); }
+  .leaflet-container { font: inherit; }
+  .pin-legend { display:flex; gap:8px; flex-wrap:wrap; }
+  .pin-legend .item { display:flex; align-items:center; gap:6px; padding:2px 6px; border:1px solid var(--border); border-radius:8px; }
+  .pin-dot { width:12px; height:12px; border-radius:50%; border:1px solid #222; }
+  .modal.regll { position: fixed; inset: 0; background: rgba(0,0,0,.3); display:none; align-items:center; justify-content:center; z-index: 9999; }
+  .modal.regll .card { background: var(--panel,#fff); padding: 16px; width: min(520px, 90vw); border-radius: 14px; box-shadow: 0 8px 30px rgba(0,0,0,.12); }
+  .modal.regll .row { display:grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .modal.regll label { display:block; font-weight:600; margin-top:8px; }
+  .modal.regll input, .modal.regll select, .modal.regll textarea { width:100%; padding:8px; border:1px solid var(--border); border-radius:8px; }
+  .modal.regll .actions { display:flex; gap:8px; justify-content:flex-end; margin-top:12px; }
+</style>
+
+<script>
+(function(){
+  // Reutilizamos datos del script anterior si existen
+  window.GW = window.GW || {};
+  const GW = window.GW;
+
+  // Helpers
+  const $=s=>document.querySelector(s);
+  const $$=s=>Array.from(document.querySelectorAll(s));
+  const norm=s=>String(s||'').normalize('NFD').replace(/[\\u0300-\\u036f]/g,'').toLowerCase().trim();
+
+  // === MAPA ===
+  function ensureMap(){
+    let holder = document.getElementById('gwMap');
+    if(holder) return holder;
+    // intentamos ubicar antes del panel de "Clientes filtrados"
+    const clientesPanel = $$('h3,h4').find(x=> norm(x.textContent)==='clientes filtrados');
+    const wrap = document.createElement('div');
+    wrap.className = 'card';
+    wrap.style.margin = '6px 0 12px 0';
+    wrap.innerHTML = `
+      <div id="gwMap"></div>
+      <div style="margin-top:8px" class="pin-legend" id="gwLegend"></div>
+    `;
+    if(clientesPanel && clientesPanel.parentElement){
+      clientesPanel.parentElement.parentElement.insertBefore(wrap, clientesPanel.parentElement);
+    }else{
+      (document.getElementById('app')||document.body).prepend(wrap);
+    }
+    return document.getElementById('gwMap');
+  }
+
+  let map, layerGroup;
+  function vendorColor(name){
+    // color estable a partir del nombre
+    const str = String(name||'N/A');
+    let h = 0; for(let i=0;i<str.length;i++){ h = (h*31 + str.charCodeAt(i)) % 360; }
+    return `hsl(${h},75%,45%)`;
+  }
+
+  function drawMap(list){
+    const mEl = ensureMap();
+    if(!map){
+      map = L.map(mEl).setView([18.7, -70.2], 8);
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        maxZoom: 19, attribution: '&copy; OpenStreetMap'
+      }).addTo(map);
+      layerGroup = L.layerGroup().addTo(map);
+    }
+    layerGroup.clearLayers();
+    let bounds = [];
+    const vendors = new Map();
+    list.forEach(c=>{
+      const lat = Number(c.lat), lng = Number(c.lng);
+      if(isFinite(lat) && isFinite(lng)){
+        const color = vendorColor(c.vendedor||'N/A');
+        const marker = L.circleMarker([lat, lng], {radius:7, color:'#111', weight:1, fillColor:color, fillOpacity:.95});
+        marker.bindPopup(`<b>${c.cliente||''}</b><br>Cod: ${c.codigo||''}<br>Vendedor: ${c.vendedor||''}<br>Gestor: ${c.gestor||''}`);
+        marker.addTo(layerGroup);
+        bounds.push([lat,lng]);
+        vendors.set(c.vendedor||'N/A', color);
+      }
+    });
+    if(bounds.length){ map.fitBounds(bounds, {padding:[20,20]}); }
+    // legend
+    const leg = document.getElementById('gwLegend');
+    if(leg){
+      leg.innerHTML = '';
+      [...vendors.entries()].slice(0,25).forEach(([name,color])=>{
+        const it = document.createElement('div');
+        it.className='item';
+        it.innerHTML = `<span class="pin-dot" style="background:${color}"></span><span>${name||'N/A'}</span>`;
+        leg.appendChild(it);
+      });
+    }
+  }
+
+  // Enganche a pipeline anterior
+  const origRenderTabla = window.renderTabla;
+  window.renderTabla = function(list, mount){
+    if(origRenderTabla) origRenderTabla(list, mount);
+    try{ drawMap(list); }catch(e){ console.error('map draw error', e); }
+  };
+
+  // === Registrar llamada (modal simple) ===
+  function ensureRegModal(){
+    let md = document.getElementById('modalRegLL');
+    if(md) return md;
+    md = document.createElement('div');
+    md.className = 'modal regll';
+    md.id = 'modalRegLL';
+    md.innerHTML = `
+      <div class="card">
+        <h3>Registrar llamada</h3>
+        <div id="regTarget" class="muted" style="margin-bottom:6px"></div>
+        <div class="row">
+          <div>
+            <label>Fecha</label>
+            <input type="date" id="regFecha">
+          </div>
+          <div>
+            <label>Hora</label>
+            <input type="time" id="regHora">
+          </div>
+        </div>
+        <div class="row">
+          <div>
+            <label>Estatus</label>
+            <select id="regEstatus">
+              <option value="llamada">Llamada</option>
+              <option value="no contesta">No contesta</option>
+              <option value="reprogramada">Reprogramada</option>
+              <option value="visita">Visita</option>
+            </select>
+          </div>
+          <div>
+            <label>Próxima visita (opcional)</label>
+            <input type="date" id="regProx">
+          </div>
+        </div>
+        <label>Observación</label>
+        <textarea id="regObs" rows="3"></textarea>
+        <div class="actions">
+          <button id="regCancelar" class="btn">Cancelar</button>
+          <button id="regGuardar" class="btn btn-primary">Guardar</button>
+        </div>
+      </div>`;
+    document.body.appendChild(md);
+    md.addEventListener('click', (e)=>{ if(e.target===md) md.style.display='none'; });
+    $('#regCancelar').addEventListener('click', ()=> md.style.display='none');
+    return md;
+  }
+  function openRegModal(client){
+    const md = ensureRegModal();
+    $('#regTarget').textContent = `${client.cliente||''} — Cod ${client.codigo||''}`;
+    const now = new Date();
+    $('#regFecha').value = now.toISOString().slice(0,10);
+    $('#regHora').value  = String(now.getHours()).padStart(2,'0')+':'+String(now.getMinutes()).padStart(2,'0');
+    $('#regEstatus').value='llamada';
+    $('#regProx').value='';
+    $('#regObs').value='';
+    md.style.display='flex';
+    $('#regGuardar').onclick = ()=>{
+      const rec = {
+        ts: Date.now(),
+        fecha: $('#regFecha').value,
+        hora:  $('#regHora').value,
+        estatus: $('#regEstatus').value,
+        prox: $('#regProx').value,
+        obs: $('#regObs').value,
+        cliente: client.cliente, codigo: client.codigo,
+        vendedor: client.vendedor, gestor: client.gestor, empresa: client.empresa
+      };
+      try{
+        const key='llamadas_hist_local';
+        const arr = JSON.parse(localStorage.getItem(key)||'[]'); arr.push(rec);
+        localStorage.setItem(key, JSON.stringify(arr));
+        alert('Llamada guardada localmente ('+arr.length+')');
+        md.style.display='none';
+      }catch(e){ alert('Error al guardar');}
+    };
+  }
+
+  // 1) Botón "Seleccionar" de la tabla → abre modal
+  const origBind = window.renderTabla;
+  window.renderTabla = function(list, mount){
+    if(origBind) origBind(list, mount);
+    // Atar selección a modal
+    mount.querySelectorAll('[data-act="sel"]').forEach(btn=>{
+      btn.addEventListener('click', (ev)=>{
+        const cod = ev.currentTarget.getAttribute('data-cod');
+        const item = list.find(x=> String(x.codigo)===String(cod));
+        if(item){ localStorage.setItem('selected_client', JSON.stringify(item)); openRegModal(item); }
+      });
+    });
+    try{ drawMap(list); }catch(e){}
+  };
+
+  // 2) Top nav "Registrar llamada" → abre modal con el último seleccionado
+  function hookRegistrarNav(){
+    const navBtn = $$('button, a, .btn').find(b=> /registrar\s*llamada/i.test(b.textContent||''));
+    if(navBtn){
+      navBtn.addEventListener('click', (e)=>{
+        e.preventDefault();
+        try{
+          const item = JSON.parse(localStorage.getItem('selected_client')||'null');
+          if(item) openRegModal(item);
+          else alert('Primero selecciona un cliente en la lista.');
+        }catch(_){ alert('Primero selecciona un cliente en la lista.'); }
+      });
+    }
+  }
+
+  document.addEventListener('DOMContentLoaded', hookRegistrarNav);
+})();
+</script>
+
 </body>
 </html>
