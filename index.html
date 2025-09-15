@@ -192,6 +192,8 @@ body.show-resumen #screenResumenSem > .card {
         <div><label>Contraseña</label><input id="loginPass" type="password" placeholder="********" autocomplete="current-password" /></div>
         <div class="grid"><label>&nbsp;</label><button id="btnLogin" class="btn btn-primary">Entrar</button></div>
       </div>
+      <div class="row" style="margin-top:8px"><div class="grid"><button id="btnProbe" class="btn">Probar usuarios</button></div></div>
+      <div id="probeOut" class="help" style="margin-top:6px"></div>
       <div class="toolbar" style="margin-top:6px;">
         <span class="chip">Modo: <span id="modeLabel">local</span></span>
         <span class="chip">Usuarios: <span id="usersCount">0</span></span>
@@ -1078,6 +1080,30 @@ async function init(){
 
   // Events
   document.getElementById('btnLogin').addEventListener('click', doLogin);
+  document.getElementById('btnProbe').addEventListener('click', async ()=>{
+    const out = document.getElementById('probeOut');
+    out.textContent = 'Cargando Usuarios...';
+    try{
+      const rows = await fetchCSV(CONFIG.sheets.usuarios);
+      const hdr = rows[0]||[];
+      const first = (rows[1]||[]).slice(0,6).join(' | ');
+      const sample = rows.length-1;
+      const cols = hdr.length;
+      const u = (document.getElementById('loginUser')||{}).value||'';
+      const p = (document.getElementById('loginPass')||{}).value||'';
+      // reconstruir STATE.users con el mapper actual
+      STATE.users = rows.slice(1).map(mapUserRecord);
+      const norm = s=>String(s||'').normalize('NFD').replace(/\p{Diacritic}/gu,'').toLowerCase().trim();
+      const cand = STATE.users.find(r=>[r.Usuario,r.Correo,r.Email,r.Login,r.Vendedor,r.Gestor].some(x=>norm(x)===norm(u)));
+      const passCol = STATE.users[0] ? Object.keys(STATE.users[0]).find(k=>k.toLowerCase().includes('pass')||k.toLowerCase().includes('clave')||k.toLowerCase().includes('contra')) : 'Password';
+      const pass = cand ? (cand.Password||cand.Clave||'') : '';
+      out.innerHTML = `OK: filas=${sample}, columnas=${cols}<br>Ejemplo: ${first}<br>Usuario digitado: <b>${u||'(vacío)'}</b><br>Match encontrado: <b>${cand? (cand.Usuario||cand.Vendedor||cand.Correo||'-'):'NO'}</b><br>Columna clave detectada: <b>${passCol||'-'}</b> ${pass? '(no vacía)':'(vacía)'}<br>Consejo: si la clave está vacía puedes usar <code>1234</code> temporalmente.`;
+    }catch(e){
+      console.error(e);
+      out.textContent='Error probando Usuarios.';
+    }
+  });
+
   ['fSemana','fDia','fVendedor','fGestor','fEmpresa'].forEach(id=> document.getElementById(id).addEventListener('change', applyFilters));
   document.getElementById('fBuscar').addEventListener('input', applyFilters);
   document.getElementById('fCliente').addEventListener('change', ()=>{ const cod=val('fCliente'); const x=STATE.joined.find(r=> String(r.cod)===String(cod) ); if(x){ selectCliente(x); } else { STATE.selected=null; updateButtonsState(); } });
