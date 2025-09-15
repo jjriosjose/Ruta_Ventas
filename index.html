@@ -4464,125 +4464,107 @@ document.getElementById('rsTabReal').onclick = (e)=>{ e.target.classList.add('ac
 
 
 <script>
-// === GW FIX: Alineación con Calendario + filtro Cliente en cascada ===
+// === GW PATCH v5: Filtros robustos + cascada Cliente + incluir "Por asignar" con semana/día ===
 (function(){
-  function _get(obj, keys){
-    for (var i=0;i<keys.length;i++){ var k = keys[i]; if(obj && (k in obj)) return obj[k]; }
-    return '';
+  function uniq(arr){ return Array.from(new Set((arr||[]).filter(Boolean).map(String))); }
+  function norm(s){ return String(s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim(); }
+  function fillSelect(id, values, defLabel){
+    const el = document.getElementById(id); if(!el) return;
+    const def = defLabel || 'Todos';
+    el.innerHTML = `<option value="">${def}</option>` +
+      values.map(v => `<option value="${String(v)}">${String(v)}</option>`).join('');
   }
-  const _orig_buildJoined = window.buildJoined;
-  window.buildJoined = function(){
-    // Ejecuta original para tener STATE.clientes/STATE.calendario cargados
-    if (_orig_buildJoined) _orig_buildJoined();
-
-    try{
-      // Reconstruimos STATE.joined asegurando que VENDEDOR venga del CALENDARIO
-      const idxCal = {};
-      const getDia = r => _get(r, ['Dia','Día','dia','DIA']);
-      const getSem = r => _get(r, ['Semana','SEMANA','semana']);
-      const getVendCal = r => _get(r, ['vendedor','VENDEDOR','Vendedor']);
-      const keyOf = c => (window.norm ? window.norm(window.pick(c, window.JOIN_KEYS)) : (c['Cod Empresa']||c['cod_empresa']||c['COD'])) || '';
-
-      if (Array.isArray(window.STATE.calendario)) {
-        window.STATE.calendario.forEach(r=>{
-          const k = (window.norm ? window.norm(window.pick(r, window.JOIN_KEYS)) : (r['Cod Empresa']||r['cod_empresa']||r['COD'])) || '';
-          if (!k) return;
-          // Si hay varios en calendario para un mismo cliente, conservamos el PRIMERO (constante)
-          if (!idxCal[k]) idxCal[k] = r;
-        });
-      }
-
-      // Volvemos a mapear joined tomando vendedor del calendario si existe
-      window.STATE.joined = (window.STATE.clientes||[]).map(c=>{
-        const k = keyOf(c);
-        const m = idxCal[k] || {};
-        const semana = getSem(m) || 'Por asignar';
-        const dia    = getDia(m)  || 'Por asignar';
-        const vendedor = getVendCal(m) || window.detectVendedor(c) || '';
-        const gestor  = c['gestor_servicio']||c['Gestor']||c['GESTOR']||c['GESTOR_SERVICIO']||'';
-        const empresa = c['Empresa']||c['EMPRESA']||'';
-        const nombre  = c['NombreCliente']||c['Cliente']||c['RazonSocial']||c['RAZONSOCIAL']||'';
-        const lat = (window.getLat ? window.getLat(c) : (c.lat||'')); 
-        const lon = (window.getLon ? window.getLon(c) : (c.lon||''));
-        const telefono1 = c['Telefono1']||c['TEL1']||c['Telefono']||c['Tel']||c['TEL']||'';
-        const celular   = c['Celular']||c['CELULAR']||c['Movil']||c['Móvil']||'';
-        const provincia = c['Provincia']||c['PROVINCIA']||c['estado']||c['Departamento']||'';
-        return { cod:k, nombre, semana, dia, vendedor, gestor, empresa, lat, lon, telefono1, celular, provincia };
-      });
-
-      if ((window.CONFIG?.excluirVendedores||[]).length){
-        window.STATE.joined = window.STATE.joined.filter(x=> !window.isVendorExcluded(x.vendedor) );
-      }
-      // También actualizamos las opciones iniciales
-      if (typeof buildFilters === 'function') buildFilters();
-    }catch(e){ console.error('buildJoined patch', e); }
-  };
-
-  // Reemplazo de buildFilters: filtro Cliente en cascada
-  const _orig_buildFilters = window.buildFilters;
+  function getClienteKey(c){
+    return c['Cod Empresa']||c['Cod']||c['COD']||c['empresa']||c['EMPRESA']||c['Empresa']||c['codigo']||c['Codigo']||c['codigo_cliente']||'';
+  }
+  // Override buildFilters: semanas y días fijos; vendedor/gestor/empresa desde joined (fallback clientes)
+  const _buildFilters = window.buildFilters;
   window.buildFilters = function(){
     try{
-      const S = window.STATE.joined || [];
-      window.fillSelect('fSemana', window.uniqueSorted(S.map(x=>x.semana)), 'Todas');
-      window.fillSelect('fDia',     window.uniqueSorted(S.map(x=>x.dia)),     'Todos');
-      const vendOpts = window.uniqueSorted(S.map(x=>x.vendedor)).filter(v=> !window.isVendorExcluded(v) );
-      window.fillSelect('fVendedor', vendOpts, 'Todos');
-      window.fillSelect('fGestor',   window.uniqueSorted(S.map(x=>x.gestor)),  'Todos');
-      window.fillSelect('fEmpresa',  window.uniqueSorted(S.map(x=>x.empresa)), 'Todas');
-      // El combo Cliente se llena en cascada dentro de applyFilters (según filtros activos)
-      if (_orig_buildFilters) _orig_buildFilters(); // para cualquier otro side-effect
-    }catch(e){ console.error('buildFilters patch', e); }
+      const S = (window.STATE && STATE.joined) ? STATE.joined : [];
+      fillSelect('fSemana', ['1','2','3','4'], 'Todas');
+      fillSelect('fDia', ['LUNES','MARTES','MIERCOLES','JUEVES','VIERNES'], 'Todos');
+
+      let vend = uniq(S.map(x=>x.vendedor));
+      if(vend.length===0 && STATE && Array.isArray(STATE.clientes)){
+        const v2 = STATE.clientes.map(c=> (window.detectVendedor? detectVendedor(c) : (c.vendedor||c.VENDEDOR||c['Vendedor'])));
+        vend = uniq(v2);
+      }
+      vend = vend.filter(v=> !window.isVendorExcluded || !isVendorExcluded(v));
+      vend.sort((a,b)=> a.localeCompare(b,'es',{sensitivity:'base'}));
+      fillSelect('fVendedor', vend, 'Todos');
+
+      let gest = uniq(S.map(x=>x.gestor));
+      if(gest.length===0 && STATE && Array.isArray(STATE.clientes)){
+        const g2 = STATE.clientes.map(c=> c['gestor_servicio']||c['Gestor']||c['GESTOR']||c['gestor']||'');
+        gest = uniq(g2);
+      }
+      gest.sort((a,b)=> a.localeCompare(b,'es',{sensitivity:'base'}));
+      fillSelect('fGestor', gest, 'Todos');
+
+      let emp = uniq(S.map(x=>x.empresa));
+      if(emp.length===0 && STATE && Array.isArray(STATE.clientes)){
+        const e2 = STATE.clientes.map(c=> c['Empresa']||c['EMPRESA']||c['empresa']||'');
+        emp = uniq(e2);
+      }
+      emp.sort((a,b)=> a.localeCompare(b,'es',{sensitivity:'base'}));
+      fillSelect('fEmpresa', emp, 'Todas');
+
+      // Cliente se llenará en cascada dentro de applyFilters()
+      if(_buildFilters) _buildFilters();
+    }catch(e){ console.warn('buildFilters override error', e); }
   };
 
-  // Reemplazo de applyFilters: calcula subconjunto sin fCliente para llenar el combo
-  const _orig_applyFilters = window.applyFilters;
+  // Override applyFilters: incluir "Por asignar" cuando se filtra por semana/día; y llenar fCliente en cascada
+  const _applyFilters = window.applyFilters;
   window.applyFilters = function(){
     try{
-      const val = id => (document.getElementById(id)||{}).value || '';
-      const fSemana = val('fSemana'), fDia = val('fDia'), fVend = val('fVendedor'), fGes = val('fGestor'),
-            fEmp = val('fEmpresa'), fBus = (window.norm?window.norm(val('fBuscar')):val('fBuscar'));
-      const S = window.STATE.joined || [];
-      // Subconjunto base sin fCliente: sirve para poblar el combo en cascada
+      const getVal = id => (document.getElementById(id)||{}).value || '';
+      const fSemana = getVal('fSemana'), fDia = getVal('fDia'), fVend = getVal('fVendedor');
+      const fGes = getVal('fGestor'), fEmp = getVal('fEmpresa'), fCli = getVal('fCliente');
+      const fBus = norm(getVal('fBuscar'));
+      const S = (window.STATE && STATE.joined) ? STATE.joined : [];
+
+      // 1) Base sin cliente para poder poblar en cascada
       const base = S.filter(x=>{
-        if (window.isVendorExcluded && window.isVendorExcluded(x.vendedor)) return false;
-        if (fSemana && String(x.semana)!==String(fSemana)) return false;
-        if (fDia    && String(x.dia)!==String(fDia))       return false;
-        if (fVend   && String(x.vendedor)!==String(fVend)) return false;
-        if (fGes    && String(x.gestor)!==String(fGes))    return false;
-        if (fEmp    && String(x.empresa)!==String(fEmp))   return false;
-        if (fBus){ 
-          const hay = [x.cod,x.nombre,x.vendedor,x.gestor,x.empresa].map(v=>(window.norm?window.norm(v):String(v||''))).some(s=> s.includes(fBus));
-          if (!hay) return false;
+        if(window.isVendorExcluded && isVendorExcluded(x.vendedor)) return false;
+        if(fSemana && !(String(x.semana)===String(fSemana) || norm(x.semana)==='por asignar' || !x.semana)) return false;
+        if(fDia && !(String(x.dia)===String(fDia) || norm(x.dia)==='por asignar' || !x.dia)) return false;
+        if(fVend && String(x.vendedor)!==String(fVend)) return false;
+        if(fGes && String(x.gestor)!==String(fGes)) return false;
+        if(fEmp && String(x.empresa)!==String(fEmp)) return false;
+        if(fBus){
+          const hay = [x.cod,x.nombre,x.vendedor,x.gestor,x.empresa].map(v=> norm(v)).some(s=> s.includes(fBus));
+          if(!hay) return false;
         }
         return true;
       });
-      // Poblar select de Cliente con el subconjunto base
-      (function fillClienteCascade(){
-        const sel = document.getElementById('fCliente');
-        if(!sel) return;
-        const current = sel.value;
-        sel.innerHTML = '<option value="">-- Seleccione --</option>' +
-          base
-            .map(x=> ({value:x.cod, label:`${x.cod} - ${x.nombre}`}))
-            .sort((a,b)=> a.label.localeCompare(b.label,'es',{numeric:true}))
-            .map(o=> `<option value="${o.value}">${o.label}</option>`)
-            .join('');
-        // Si el cliente anterior sigue existente, mantener selección
-        if (current && base.some(x=> String(x.cod)===String(current))) sel.value = current;
-      })();
 
-      // Ahora sí, aplicar también el filtro de cliente
-      const fCli = val('fCliente');
-      window.STATE.filtered = base.filter(x=> !fCli || String(x.cod)===String(fCli));
+      // 2) Poblar Cliente en cascada según base
+      const selCli = document.getElementById('fCliente');
+      if(selCli){
+        const opts = uniq(base.map(x=> String(x.cod))).map(cod => {
+          const item = base.find(r=> String(r.cod)===cod) || {};
+          const label = `${cod} - ${(item.nombre||'').toString()}`;
+          return {value: cod, label};
+        }).sort((a,b)=> a.label.localeCompare(b.label,'es',{numeric:true, sensitivity:'base'}));
+        const prev = selCli.value;
+        selCli.innerHTML = '<option value="">-- Seleccione --</option>' + opts.map(o=> `<option value="${o.value}">${o.label}</option>`).join('');
+        if(prev && opts.some(o=> o.value===prev)) selCli.value = prev; else selCli.value='';
+      }
 
-      // Render habitual
-      window.renderTable && window.renderTable();
-      window.renderMap && window.renderMap();
-      window.updateStats && window.updateStats();
-      window.updateButtonsState && window.updateButtonsState();
+      // 3) Aplicar cliente
+      const fCli2 = (document.getElementById('fCliente')||{}).value || '';
+      const finalRows = base.filter(x=> !fCli2 || String(x.cod)===String(fCli2));
+
+      window.STATE.filtered = finalRows;
+      if(typeof window.renderTable==='function') renderTable();
+      if(typeof window.renderMap==='function') renderMap();
+      if(typeof window.updateStats==='function') updateStats();
+      if(typeof window.updateButtonsState==='function') updateButtonsState();
     }catch(e){
-      console.error('applyFilters patch', e);
-      if (_orig_applyFilters) _orig_applyFilters();
+      console.warn('applyFilters override error', e);
+      if(_applyFilters) _applyFilters();
     }
   };
 })();
