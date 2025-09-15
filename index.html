@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Gestión de Llamadas — Home (integrado)</title>
+  <title>Gestión de Llamadas — v7.5.6 (Login + Integrado)</title>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
@@ -38,6 +38,9 @@
     .legend .item{display:flex;align-items:center;gap:6px;margin:3px 0;font-size:12px}
     .dot{width:10px;height:10px;border-radius:50%}
     .errorbar{position:fixed;left:0;right:0;bottom:0;background:#fee2e2;color:#991b1b;border-top:1px solid #fecaca;padding:8px 12px;font-size:12px;display:none}
+    /* LOGIN */
+    #loginView{min-height:70vh;display:flex;align-items:center;justify-content:center}
+    #appView{display:none}
   </style>
 </head>
 <body>
@@ -45,12 +48,12 @@
     <div class="wrap">
       <div class="row" style="align-items:center;justify-content:space-between">
         <div class="row" style="align-items:center;gap:12px">
-          <div style="width:40px;height:40px;border-radius:8px;background:#fff url('https://dummyimage.com/64x64/ff0000/ffffff&text=K') center/cover no-repeat;border:1px solid var(--border)"></div>
+          <div style="width:40px;height:40px;border-radius:8px;background:#fff url('https://dummyimage.com/64x64/0ea5e9/ffffff&text=GW') center/cover no-repeat;border:1px solid var(--border)"></div>
           <h1>Gestión de Llamadas</h1>
           <span class="chip">LLAMADAS v7.5.6</span>
-          <span class="chip">Single-File</span>
+          <span class="chip" id="chipUser" style="display:none">Usuario: -</span>
         </div>
-        <div class="toolbar">
+        <div class="toolbar" id="topBar" style="display:none">
           <button class="btn small" id="btnAgenda">📅 Agenda</button>
           <button class="btn small" id="btnRegistrar">📝 Registrar llamada</button>
           <button class="btn small" id="btnReporte">📊 Reporte</button>
@@ -61,12 +64,51 @@
           <button class="btn small" id="btnExportXLSX">⇩ Exportar Excel</button>
           <button class="btn small warn" id="btnRestaurar">⟲ Restaurar</button>
           <button class="btn small" id="btnConfig">⚙️ Configurar</button>
+          <button class="btn small" id="btnLogout">⎋ Salir</button>
         </div>
       </div>
     </div>
   </header>
 
-  <main class="wrap">
+  <!-- LOGIN VIEW -->
+  <div id="loginView" class="wrap">
+    <div class="card" style="max-width:460px;width:100%">
+      <h3 style="margin-top:0">Iniciar sesión</h3>
+      <div class="row">
+        <div style="flex:1">
+          <label>Usuario</label>
+          <input id="lgUser" placeholder="ej: jorge" autocomplete="username">
+        </div>
+      </div>
+      <div class="row" style="margin-top:8px">
+        <div style="flex:1">
+          <label>Contraseña</label>
+          <input id="lgPass" type="password" placeholder="••••••••" autocomplete="current-password">
+        </div>
+      </div>
+      <div class="row" style="margin-top:8px">
+        <div style="flex:1">
+          <label>Rol (opcional)</label>
+          <select id="lgRol">
+            <option value="">(No especificado)</option>
+            <option value="vendedor">Vendedor</option>
+            <option value="gestor">Gestor</option>
+            <option value="adm">Administrador</option>
+          </select>
+        </div>
+      </div>
+      <div class="row" style="justify-content:flex-end;margin-top:12px;gap:8px">
+        <button class="btn" id="btnLoginDemo">Demo</button>
+        <button class="btn primary" id="btnLogin">Entrar</button>
+      </div>
+      <div style="font-size:12px;color:var(--muted);margin-top:6px">
+        *Esta versión acepta cualquier usuario para pruebas locales. Luego conectaremos tu Users Sheet.
+      </div>
+    </div>
+  </div>
+
+  <!-- APP VIEW -->
+  <main id="appView" class="wrap">
     <section class="card">
       <div class="toolbar">
         <button class="btn small" id="btnFiltros">▦ Filtros</button>
@@ -308,15 +350,14 @@
       formNuevoCliente: ''
     };
     const CFG_KEY = 'cfg_llamadas_app';
+    const AUTH_KEY = 'auth_llamadas_user';
+    const CALLS_KEY = 'calls_llamadas_app';
+    const STATE = { calls:[], clientes:[], calendario:[], cfg:loadCfg(), user:null };
+
     function loadCfg(){
       try{ const c = JSON.parse(localStorage.getItem(CFG_KEY)||'{}'); return {...DEFAULT_CFG, ...c}; }catch(e){ return {...DEFAULT_CFG}; }
     }
     function saveCfg(c){ localStorage.setItem(CFG_KEY, JSON.stringify(c)); }
-
-    // ---------- ESTADO ----------
-    const STATE = { calls:[], clientes:[], calendario:[], cfg:loadCfg() };
-    // Persistencia de llamadas
-    const CALLS_KEY = 'calls_llamadas_app';
 
     // ---------- HELPERS ----------
     const $ = s=>document.querySelector(s);
@@ -325,6 +366,25 @@
     const uniq = a=>Array.from(new Set(a.filter(Boolean)));
     function fmt(dt){ if(!dt) return ''; const d = new Date(dt); if(isNaN(d)) return dt; const pad=n=>String(n).padStart(2,'0'); return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`; }
     function showErr(msg){ const el=$('#errorbar'); el.textContent = msg; el.style.display='block'; setTimeout(()=>{ el.style.display='none'; }, 5000); }
+
+    // ---------- LOGIN ----------
+    function applyAuthUI(){
+      const logged = !!STATE.user;
+      $('#loginView').style.display = logged? 'none':'block';
+      $('#appView').style.display = logged? 'block':'none';
+      $('#topBar').style.display = logged? 'flex':'none';
+      $('#chipUser').style.display = logged? 'inline-flex':'none';
+      $('#chipUser').textContent = 'Usuario: ' + (STATE.user? (STATE.user.user||'-'):'-');
+    }
+    function loadUser(){
+      try{ STATE.user = JSON.parse(localStorage.getItem(AUTH_KEY)||'null'); }catch(e){ STATE.user=null; }
+      applyAuthUI();
+    }
+    function saveUser(u){
+      STATE.user = u;
+      localStorage.setItem(AUTH_KEY, JSON.stringify(u));
+      applyAuthUI();
+    }
 
     // ---------- MAPA ----------
     let map, layer;
@@ -393,7 +453,7 @@
       const bus = $('#fBuscar').value.trim().toLowerCase();
       const cli = $('#fCliente').value.trim().toLowerCase();
       const sem = $('#fSemana').value.trim();
-      const dia = $('#fDia').value.trim().toLowerCase(); // '' si Todos
+      const dia = $('#fDia').value.trim().toLowerCase();
       const hdr = rows[0]||[];
       const idxNom = hdr.findIndex(h=>/cliente|nombre/i.test(String(h)));
       const idxVend= hdr.findIndex(h=>/vendedor/i.test(String(h)));
@@ -498,7 +558,7 @@
     function weekOfMonthFromDate(isoDate){
       if(!isoDate) return '';
       const d=new Date(isoDate); if(isNaN(d)) return '';
-      const firstDay = new Date(d.getFullYear(), d.getMonth(), 1).getDay() || 7; // 1..7 (Mon=1)
+      const firstDay = new Date(d.getFullYear(), d.getMonth(), 1).getDay() || 7;
       const day = d.getDate();
       return String(Math.ceil((day + firstDay - 1)/7));
     }
@@ -507,7 +567,6 @@
       return ['Domingo','Lunes','Martes','Miércoles','Jueves','Viernes','Sábado'][d.getDay()];
     }
     function parsePlanCalendario(rows){
-      // Detectar columnas típicas
       const hdr = rows[0]||[];
       const iGes = hdr.findIndex(h=>/gestor|gestor_servicio/i.test(String(h)));
       const iSem = hdr.findIndex(h=>/n.?\\s*semana|semana/i.test(String(h)));
@@ -521,11 +580,9 @@
       }));
     }
     function kpiCompute(){
-      // Filtros actuales
       const fGes = $('#fGestor').value.trim();
       const fSem = $('#fSemana').value.trim();
       const fDia = $('#fDia').value.trim();
-      // Plan (calendario)
       const plan = parsePlanCalendario(STATE.calendario).filter(p=>{
         if(fGes && p.gestor!==fGes) return false;
         if(fSem && p.semana!==fSem) return false;
@@ -534,7 +591,6 @@
       });
       const esperadasBySem = {};
       plan.forEach(p=>{ esperadasBySem[p.semana] = (esperadasBySem[p.semana]||0) + p.cantidad; });
-      // Realizadas (calls)
       const realizadasBySem = {};
       STATE.calls.forEach(c=>{
         const sem = c.semana || weekOfMonthFromDate(c.fechaHora);
@@ -544,7 +600,6 @@
         if(fDia && dia !== fDia) return;
         realizadasBySem[sem] = (realizadasBySem[sem]||0) + 1;
       });
-      // Semanas 1..4
       const semanas = ['1','2','3','4'];
       let totE=0, totR=0;
       const rows = semanas.map(s=>{
@@ -552,7 +607,6 @@
         totE+=e; totR+=r;
         return {s,e,r,pct};
       });
-      // Render
       $('#kpiEsperadas').textContent = totE;
       $('#kpiRealizadas').textContent = totR;
       $('#kpiPct').textContent = (totE? Math.round((totR/totE)*100): (totR?100:0)) + '%';
@@ -563,7 +617,7 @@
     // ---------- BOOTSTRAP ----------
     async function fetchCSV(url){
       try{
-        const t = await fetch(url).then(r=>r.text());
+        const t = await fetch(url, {cache:'no-store'}).then(r=>r.text());
         return t ? csvToRows(t) : [];
       }catch(e){
         showErr('No se pudo leer: '+url);
@@ -571,26 +625,34 @@
       }
     }
     async function boot(){
-      initMap();
-      // Cargar llamadas persistidas
-      try{ STATE.calls = JSON.parse(localStorage.getItem(CALLS_KEY)||'[]'); }catch(e){ STATE.calls=[]; }
-      // Cargar clientes
-      STATE.clientes = await fetchCSV(STATE.cfg.clientes);
-      if(!STATE.clientes.length) showErr('Clientes: sin datos. Revisa Configurar → URL CSV.');
-      fillCombos();
-      renderClientesTabla();
-      renderMap();
-      // Pre-cargar calendario si existe
-      if(STATE.cfg.calendario){
-        STATE.calendario = await fetchCSV(STATE.cfg.calendario);
+      loadUser();
+      if(STATE.user){
+        initMap();
+        try{ STATE.calls = JSON.parse(localStorage.getItem(CALLS_KEY)||'[]'); }catch(e){ STATE.calls=[]; }
+        STATE.clientes = await fetchCSV(STATE.cfg.clientes);
+        if(!STATE.clientes.length) showErr('Clientes: sin datos. Revisa Configurar → URL CSV.');
+        fillCombos(); renderClientesTabla(); renderMap();
+        if(STATE.cfg.calendario){ STATE.calendario = await fetchCSV(STATE.cfg.calendario); }
       }
     }
 
-    // ---------- EVENTOS TOPBAR ----------
+    // ---------- TOPBAR EVENTS ----------
+    $('#btnLogin').addEventListener('click', ()=>{
+      const u = $('#lgUser').value.trim();
+      if(!u){ showErr('Ingrese usuario.'); return; }
+      saveUser({user:u, rol: $('#lgRol').value||''});
+      boot();
+    });
+    $('#btnLoginDemo').addEventListener('click', ()=>{
+      saveUser({user:'demo', rol:'adm'}); boot();
+    });
+    $('#btnLogout').addEventListener('click', ()=>{
+      localStorage.removeItem(AUTH_KEY);
+      STATE.user = null;
+      applyAuthUI();
+    });
+
     $('#btnRegistrar').addEventListener('click', ()=>{
-      // Prellenar con selección actual
-      const hdr = STATE.clientes[0]||[];
-      const idxCli = hdr.findIndex(h=>/cliente|nombre/i.test(String(h)));
       const selCli = $('#fCliente').value || '';
       $('#mCliente').value = selCli;
       $('#mSemana').value = $('#fSemana').value || '';
@@ -679,6 +741,8 @@
     // Export CSV/XLSX clientes
     $('#btnExportCSV').addEventListener('click', ()=>exportTableToCSV('tblClientes','Clientes_filtrados.csv'));
     $('#btnExportXLSX').addEventListener('click', ()=>exportTableToXLSX('tblClientes','Clientes_filtrados.xlsx'));
+    $('#btnExportCSVDet').addEventListener('click', ()=>exportTableToCSV('repTbl','Llamadas.csv'));
+    $('#btnExportXLSXDet').addEventListener('click', ()=>exportTableToXLSX('repTbl','Llamadas.xlsx'));
 
     // Filtros reactividad
     ['fSemana','fDia','fVendedor','fGestor','fEmpresa','fBuscar','fCliente'].forEach(id=>{
