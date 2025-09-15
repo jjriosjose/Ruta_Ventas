@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Gestión de Llamadas — Home</title>
+  <title>Gestión de Llamadas — Home (integrado)</title>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
@@ -33,6 +33,11 @@
     thead th{font-size:12px;font-weight:800}
     #map{height:380px;border-radius:12px;overflow:hidden}
     dialog{border:none;border-radius:16px;max-width:980px;width:92%}
+    .legend{position:absolute;right:12px;bottom:12px;background:#fff;border:1px solid var(--border);border-radius:10px;padding:8px 10px;box-shadow:0 6px 18px rgba(15,23,42,.08);min-width:140px}
+    .legend h4{margin:0 0 6px 0;font-size:12px}
+    .legend .item{display:flex;align-items:center;gap:6px;margin:3px 0;font-size:12px}
+    .dot{width:10px;height:10px;border-radius:50%}
+    .errorbar{position:fixed;left:0;right:0;bottom:0;background:#fee2e2;color:#991b1b;border-top:1px solid #fecaca;padding:8px 12px;font-size:12px;display:none}
   </style>
 </head>
 <body>
@@ -53,6 +58,7 @@
           <button class="btn small" id="btnVerFicha">👁️ Ver ficha</button>
           <button class="btn small" id="btnNuevoCliente">➕ Nuevo cliente</button>
           <button class="btn small" id="btnExportCSV">⇩ Exportar CSV</button>
+          <button class="btn small" id="btnExportXLSX">⇩ Exportar Excel</button>
           <button class="btn small warn" id="btnRestaurar">⟲ Restaurar</button>
           <button class="btn small" id="btnConfig">⚙️ Configurar</button>
         </div>
@@ -82,7 +88,7 @@
         <div style="flex:1">
           <label>Día</label>
           <select id="fDia">
-            <option>Todos</option>
+            <option value="">Todos</option>
             <option>Lunes</option><option>Martes</option><option>Miércoles</option><option>Jueves</option><option>Viernes</option><option>Sábado</option>
           </select>
         </div>
@@ -108,9 +114,13 @@
         </div>
       </div>
 
-      <div class="row" style="margin-top:12px">
-        <div class="card" style="flex:1;min-width:380px">
+      <div class="row" style="margin-top:12px; position:relative">
+        <div class="card" style="flex:1;min-width:380px; position:relative">
           <div id="map"></div>
+          <div id="legend" class="legend" style="display:none">
+            <h4>Vendedores</h4>
+            <div id="legendItems"></div>
+          </div>
         </div>
         <div class="card" style="flex:1;min-width:340px">
           <h3 style="margin:0 0 8px 0">Clientes filtrados</h3>
@@ -130,8 +140,8 @@
         <h3 style="margin-top:0">Registrar llamada</h3>
         <div class="row">
           <div style="flex:2">
-            <label>Cliente</label>
-            <input id="mCliente" placeholder="Cliente">
+            <label>Cliente *</label>
+            <input id="mCliente" placeholder="Cliente" required>
           </div>
           <div style="flex:1">
             <label>Cod Empresa</label>
@@ -140,21 +150,21 @@
         </div>
         <div class="row" style="margin-top:8px">
           <div style="flex:1">
-            <label>Vendedor</label>
-            <input id="mVendedor" placeholder="Vendedor">
+            <label>Vendedor *</label>
+            <input id="mVendedor" placeholder="Vendedor" required>
           </div>
           <div style="flex:1">
-            <label>gestor_servicio</label>
-            <input id="mGestor" placeholder="Gestor">
+            <label>Gestor *</label>
+            <input id="mGestor" placeholder="Gestor" required>
           </div>
         </div>
         <div class="row" style="margin-top:8px">
           <div style="flex:1">
-            <label>Fecha y hora</label>
-            <input id="mFechaHora" type="datetime-local">
+            <label>Fecha y hora *</label>
+            <input id="mFechaHora" type="datetime-local" required>
           </div>
           <div style="flex:1">
-            <label>N° Semana</label>
+            <label>N° Semana *</label>
             <select id="mSemana" required>
               <option value="">(Seleccione...)</option>
               <option value="1">1</option>
@@ -166,12 +176,14 @@
         </div>
         <div class="row" style="margin-top:8px">
           <div style="flex:1">
-            <label>Resultado</label>
-            <select id="mResultado">
-              <option>Exitosa</option>
-              <option>Gestión de pedido recibido</option>
+            <label>Resultado *</label>
+            <select id="mResultado" required>
+              <option>Exitosa con Cita</option>
+              <option>Exitosa con Venta</option>
+              <option>Seguimiento recepción de pedido</option>
               <option>No Contesta</option>
               <option>No Compró</option>
+              <option>Captación de Cliente</option>
             </select>
           </div>
           <div style="flex:1">
@@ -223,45 +235,142 @@
     </div>
   </dialog>
 
+  <!-- MODAL: Resumen KPI -->
+  <dialog id="dlgKPI">
+    <div class="card" style="box-shadow:none;border:none">
+      <h3 style="margin-top:0">Reporte — Resumen (KPI)</h3>
+      <div class="row" style="gap:8px">
+        <div class="card" style="flex:1">
+          <div style="font-size:12px;color:var(--muted)">Esperadas</div>
+          <div id="kpiEsperadas" style="font-size:28px;font-weight:800">0</div>
+        </div>
+        <div class="card" style="flex:1">
+          <div style="font-size:12px;color:var(--muted)">Realizadas</div>
+          <div id="kpiRealizadas" style="font-size:28px;font-weight:800">0</div>
+        </div>
+        <div class="card" style="flex:1">
+          <div style="font-size:12px;color:var(--muted)">% Cumplimiento</div>
+          <div id="kpiPct" style="font-size:28px;font-weight:800">0%</div>
+        </div>
+      </div>
+      <div style="margin-top:10px;overflow:auto;max-height:55vh">
+        <table id="kpiTbl">
+          <thead>
+            <tr><th>Semana</th><th>Esperadas</th><th>Realizadas</th><th>%</th></tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <div class="row" style="justify-content:flex-end;gap:8px;margin-top:8px">
+        <button id="btnCerrarKPI" class="btn small">Cerrar</button>
+      </div>
+    </div>
+  </dialog>
+
+  <!-- MODAL: Configuración -->
+  <dialog id="dlgCfg">
+    <form method="dialog">
+      <div class="card" style="box-shadow:none;border:none">
+        <h3 style="margin-top:0">Configuración de fuentes</h3>
+        <div class="row">
+          <div style="flex:1">
+            <label>URL CSV — Clientes</label>
+            <input id="cfgClientes" placeholder="https://...&output=csv">
+          </div>
+        </div>
+        <div class="row" style="margin-top:8px">
+          <div style="flex:1">
+            <label>URL CSV — Calendario (plan)</label>
+            <input id="cfgCalendario" placeholder="https://...&output=csv">
+          </div>
+        </div>
+        <div class="row" style="margin-top:8px">
+          <div style="flex:1">
+            <label>URL Form — Nuevo cliente (opcional)</label>
+            <input id="cfgForm" placeholder="https://forms.google.com/...">
+          </div>
+        </div>
+        <div class="row" style="margin-top:10px;justify-content:flex-end;gap:8px">
+          <button id="btnCancelCfg" class="btn">Cancelar</button>
+          <button id="btnSaveCfg" class="btn primary">Guardar</button>
+        </div>
+      </div>
+    </form>
+  </dialog>
+
+  <div id="errorbar" class="errorbar"></div>
+
   <script>
-    const SHEETS = {
-      clientes: 'https://docs.google.com/spreadsheets/d/e/2PACX-1vSGjr-XdLSamHpGQfoORmLfntJbLd-UbFpD7NdMM14x2JdMhxOYHTWQBlhYCMDu0ZTy3AYS-1Y3q91Y/pub?gid=1016315198&single=true&output=csv'
+    // ---------- CONFIG PERSISTENTE ----------
+    const DEFAULT_CFG = {
+      clientes: 'https://docs.google.com/spreadsheets/d/e/2PACX-1vSGjr-XdLSamHpGQfoORmLfntJbLd-UbFpD7NdMM14x2JdMhxOYHTWQBlhYCMDu0ZTy3AYS-1Y3q91Y/pub?gid=1016315198&single=true&output=csv',
+      calendario: '',
+      formNuevoCliente: ''
     };
+    const CFG_KEY = 'cfg_llamadas_app';
+    function loadCfg(){
+      try{ const c = JSON.parse(localStorage.getItem(CFG_KEY)||'{}'); return {...DEFAULT_CFG, ...c}; }catch(e){ return {...DEFAULT_CFG}; }
+    }
+    function saveCfg(c){ localStorage.setItem(CFG_KEY, JSON.stringify(c)); }
 
-    const STATE = { calls:[], clientes:[] };
-    try{ ['calls','historial','history','llamadas'].forEach(k=>{ localStorage.removeItem(k); sessionStorage.removeItem(k); }); }catch(e){}
+    // ---------- ESTADO ----------
+    const STATE = { calls:[], clientes:[], calendario:[], cfg:loadCfg() };
+    // Persistencia de llamadas
+    const CALLS_KEY = 'calls_llamadas_app';
 
+    // ---------- HELPERS ----------
     const $ = s=>document.querySelector(s);
     const $$ = s=>Array.from(document.querySelectorAll(s));
-    const csvToRows = (csv)=>csv.split(/\r?\n/).map(r=>r.split(',')).filter(r=>r.length>1 || (r.length===1 && r[0].trim()!==''));
+    const csvToRows = (csv)=>csv.split(/\\r?\\n/).map(r=>r.split(',')).filter(r=>r.length>1 || (r.length===1 && r[0].trim()!==''));
     const uniq = a=>Array.from(new Set(a.filter(Boolean)));
     function fmt(dt){ if(!dt) return ''; const d = new Date(dt); if(isNaN(d)) return dt; const pad=n=>String(n).padStart(2,'0'); return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`; }
+    function showErr(msg){ const el=$('#errorbar'); el.textContent = msg; el.style.display='block'; setTimeout(()=>{ el.style.display='none'; }, 5000); }
 
+    // ---------- MAPA ----------
     let map, layer;
     function initMap(){
       map = L.map('map').setView([18.7357,-70.1627],7);
       L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{attribution:'© OpenStreetMap'}).addTo(map);
       layer = L.layerGroup().addTo(map);
     }
+    const PALETTE = ['#0ea5e9','#10b981','#f59e0b','#ef4444','#8b5cf6','#22c55e','#14b8a6','#f97316','#a3e635','#e11d48','#0284c7'];
+    const colorByVendor = {};
+    function getColorForVendor(v){
+      if(!v) return '#0ea5e9';
+      if(!colorByVendor[v]){
+        const idx = Object.keys(colorByVendor).length % PALETTE.length;
+        colorByVendor[v] = PALETTE[idx];
+      }
+      return colorByVendor[v];
+    }
+    function renderLegend(vendors){
+      const box = $('#legendItems');
+      box.innerHTML = vendors.map(v=>`<div class="item"><span class="dot" style="background:${getColorForVendor(v)}"></span><span>${v||'(Sin vendedor)'}</span></div>`).join('');
+    }
     function renderMap(){
       if(!map) return;
       layer.clearLayers();
       const hdr = STATE.clientes[0]||[];
       const idxLat = hdr.findIndex(h=>String(h).toLowerCase().includes('lat'));
-      const idxLon = hdr.findIndex(h=>String(h).toLowerCase().includes('lon'));
+      const idxLon = hdr.findIndex(h=>/lon|long/i.test(String(h).toLowerCase()));
       const idxNom = hdr.findIndex(h=>/cliente|nombre/i.test(String(h)));
       const idxVend= hdr.findIndex(h=>/vendedor/i.test(String(h)));
-      STATE.clientes.slice(1).forEach(r=>{
+      const filtered = applyFiltersClientes(STATE.clientes);
+      const vendors = uniq(filtered.map(r=>r[idxVend]||'').map(s=>s.trim())).sort();
+      renderLegend(vendors);
+      filtered.forEach(r=>{
         const lat = parseFloat(r[idxLat]);
         const lon = parseFloat(r[idxLon]);
         if(!isNaN(lat) && !isNaN(lon)){
           const name = r[idxNom] || 'Cliente';
-          const vend = r[idxVend]||'';
-          L.circleMarker([lat,lon],{radius:6,weight:2,color:'#0ea5e9',fillColor:'#0ea5e9',fillOpacity:.7}).addTo(layer).bindPopup(`<b>${name}</b><br>${vend}`);
+          const vend = (r[idxVend]||'').trim();
+          const col = getColorForVendor(vend);
+          L.circleMarker([lat,lon],{radius:6,weight:2,color:col,fillColor:col,fillOpacity:.7}).addTo(layer).bindPopup(`<b>${name}</b><br>${vend}`);
         }
       });
     }
 
+    // ---------- COMBOS & FILTROS ----------
     function fillCombos(){
       const hdr = STATE.clientes[0]||[];
       const idxVend= hdr.findIndex(h=>/vendedor/i.test(String(h)));
@@ -283,26 +392,35 @@
       const emp = $('#fEmpresa').value.trim().toLowerCase();
       const bus = $('#fBuscar').value.trim().toLowerCase();
       const cli = $('#fCliente').value.trim().toLowerCase();
-      const hdr = STATE.clientes[0]||[];
+      const sem = $('#fSemana').value.trim();
+      const dia = $('#fDia').value.trim().toLowerCase(); // '' si Todos
+      const hdr = rows[0]||[];
       const idxNom = hdr.findIndex(h=>/cliente|nombre/i.test(String(h)));
       const idxVend= hdr.findIndex(h=>/vendedor/i.test(String(h)));
       const idxGes = hdr.findIndex(h=>/gestor/i.test(String(h)));
       const idxEmp = hdr.findIndex(h=>/empresa/i.test(String(h)));
       const idxCod = hdr.findIndex(h=>/cod/i.test(String(h)));
+      const idxSem = hdr.findIndex(h=>/n.?\\s*semana|semana/i.test(String(h)));
+      const idxDia = hdr.findIndex(h=>/^dia$|^día$|dia|día/i.test(String(h)));
       return rows.slice(1).filter(r=>{
         const nombre=(r[idxNom]||'').toLowerCase();
         const cod=(r[idxCod]||'').toLowerCase();
         const v=(r[idxVend]||'').toLowerCase();
         const g=(r[idxGes]||'').toLowerCase();
         const e=(r[idxEmp]||'').toLowerCase();
+        const s=(r[idxSem]||'').toString().trim();
+        const d=(r[idxDia]||'').toLowerCase();
         if(vend && v!==vend) return false;
         if(ges && g!==ges) return false;
         if(emp && e!==emp) return false;
+        if(sem && s!==sem) return false;
+        if(dia && d!==dia) return false;
         if(cli && nombre!==cli) return false;
         if(bus && !(nombre.includes(bus)||cod.includes(bus))) return false;
         return true;
       });
     }
+
     function renderClientesTabla(){
       const tbody = $('#tblClientes tbody');
       const hdr = STATE.clientes[0]||[];
@@ -311,16 +429,22 @@
       const idxGes = hdr.findIndex(h=>/gestor/i.test(String(h)));
       const idxEmp = hdr.findIndex(h=>/empresa/i.test(String(h)));
       const idxCod = hdr.findIndex(h=>/cod/i.test(String(h)));
+      const idxSem = hdr.findIndex(h=>/n.?\\s*semana|semana/i.test(String(h)));
+      const idxDia = hdr.findIndex(h=>/^dia$|^día$|dia|día/i.test(String(h)));
+      const idxLat = hdr.findIndex(h=>String(h).toLowerCase().includes('lat'));
+      const idxLon = hdr.findIndex(h=>/lon|long/i.test(String(h).toLowerCase()));
       const filtered = applyFiltersClientes(STATE.clientes);
-      $('#statClientes').textContent = 'Clientes: '+Math.max(STATE.clientes.length-1,0);
-      $('#statCoord').textContent = 'Con coordenadas: '+0;
+      const total = Math.max(STATE.clientes.length-1,0);
+      const withCoord = STATE.clientes.slice(1).filter(r=>!isNaN(parseFloat(r[idxLat])) && !isNaN(parseFloat(r[idxLon]))).length;
+      $('#statClientes').textContent = 'Clientes: '+total;
+      $('#statCoord').textContent = 'Con coordenadas: '+withCoord;
       $('#statFiltrados').textContent = 'Filtrados: '+filtered.length;
       tbody.innerHTML = filtered.map(r=>`
         <tr>
           <td>${r[idxCod]||''}</td>
           <td>${r[idxNom]||''}</td>
-          <td>${'Por asignar'}</td>
-          <td>${'Por asignar'}</td>
+          <td>${r[idxSem]||''}</td>
+          <td>${r[idxDia]||''}</td>
           <td>${r[idxVend]||''}</td>
           <td>${r[idxGes]||''}</td>
           <td>${r[idxEmp]||''}</td>
@@ -328,6 +452,7 @@
       `).join('');
     }
 
+    // ---------- REPORTE DETALLE (llamadas) ----------
     function renderReporte(){
       const tb = $('#repTbl tbody');
       tb.innerHTML = STATE.calls.map(r=>`
@@ -345,19 +470,19 @@
       `).join('');
     }
 
-    // Export Detalle
-    $('#btnExportCSVDet').addEventListener('click', ()=>{
-      const tbl = document.getElementById('repTbl');
+    // ---------- EXPORTS ----------
+    function exportTableToCSV(tableId, filename){
+      const tbl = document.getElementById(tableId);
       const out=[];
       out.push(Array.from(tbl.querySelectorAll('thead th')).map(th=>`"${th.textContent.replace(/"/g,'""')}"`).join(','));
       Array.from(tbl.querySelectorAll('tbody tr')).forEach(tr=>{
         out.push(Array.from(tr.children).map(td=>`"${td.textContent.replace(/"/g,'""')}"`).join(','));
       });
-      const blob = new Blob([out.join('\n')], {type:'text/csv;charset=utf-8;'});
-      const url = URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download='Detalle_Llamadas.csv'; a.click(); setTimeout(()=>URL.revokeObjectURL(url), 400);
-    });
-    $('#btnExportXLSXDet').addEventListener('click', ()=>{
-      const tbl = document.getElementById('repTbl');
+      const blob = new Blob([out.join('\\n')], {type:'text/csv;charset=utf-8;'});
+      const url = URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download=filename; a.click(); setTimeout(()=>URL.revokeObjectURL(url), 400);
+    }
+    function exportTableToXLSX(tableId, filename){
+      const tbl = document.getElementById(tableId);
       const aoa=[];
       aoa.push(Array.from(tbl.querySelectorAll('thead th')).map(th=>th.textContent.trim()));
       Array.from(tbl.querySelectorAll('tbody tr')).forEach(tr=>{
@@ -365,80 +490,212 @@
       });
       const ws = XLSX.utils.aoa_to_sheet(aoa);
       const wb = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(wb, ws, 'Detalle');
-      XLSX.writeFile(wb, 'Detalle_Llamadas.xlsx');
-    });
+      XLSX.utils.book_append_sheet(wb, ws, 'Datos');
+      XLSX.writeFile(wb, filename);
+    }
 
-    // Topbar events
-    $('#btnRegistrar').addEventListener('click', ()=>{
-      ['mCliente','mCod','mVendedor','mGestor','mFechaHora','mResultado','mDuracion','mObs'].forEach(id=>{
-        const el = document.getElementById(id);
-        if(!el) return;
-        if(el.type==='number') el.value='0'; else el.value='';
+    // ---------- KPI ----------
+    function weekOfMonthFromDate(isoDate){
+      if(!isoDate) return '';
+      const d=new Date(isoDate); if(isNaN(d)) return '';
+      const firstDay = new Date(d.getFullYear(), d.getMonth(), 1).getDay() || 7; // 1..7 (Mon=1)
+      const day = d.getDate();
+      return String(Math.ceil((day + firstDay - 1)/7));
+    }
+    function diaTextoFromDate(isoDate){
+      const d=new Date(isoDate); if(isNaN(d)) return '';
+      return ['Domingo','Lunes','Martes','Miércoles','Jueves','Viernes','Sábado'][d.getDay()];
+    }
+    function parsePlanCalendario(rows){
+      // Detectar columnas típicas
+      const hdr = rows[0]||[];
+      const iGes = hdr.findIndex(h=>/gestor|gestor_servicio/i.test(String(h)));
+      const iSem = hdr.findIndex(h=>/n.?\\s*semana|semana/i.test(String(h)));
+      const iDia = hdr.findIndex(h=>/^dia$|^día$|dia|día/i.test(String(h)));
+      const iCant= hdr.findIndex(h=>/plan|llamada|meta|objetivo|cantidad/i.test(String(h)));
+      return rows.slice(1).map(r=>({
+        gestor:(r[iGes]||'').trim(),
+        semana:String(r[iSem]||'').trim(),
+        dia:(r[iDia]||'').trim(),
+        cantidad: Number(r[iCant]||0) || 0
+      }));
+    }
+    function kpiCompute(){
+      // Filtros actuales
+      const fGes = $('#fGestor').value.trim();
+      const fSem = $('#fSemana').value.trim();
+      const fDia = $('#fDia').value.trim();
+      // Plan (calendario)
+      const plan = parsePlanCalendario(STATE.calendario).filter(p=>{
+        if(fGes && p.gestor!==fGes) return false;
+        if(fSem && p.semana!==fSem) return false;
+        if(fDia && p.dia && p.dia!==fDia) return false;
+        return true;
       });
-      document.getElementById('mSemana').value='';
-      document.getElementById('dlgReg').showModal();
+      const esperadasBySem = {};
+      plan.forEach(p=>{ esperadasBySem[p.semana] = (esperadasBySem[p.semana]||0) + p.cantidad; });
+      // Realizadas (calls)
+      const realizadasBySem = {};
+      STATE.calls.forEach(c=>{
+        const sem = c.semana || weekOfMonthFromDate(c.fechaHora);
+        const dia = c.dia || diaTextoFromDate(c.fechaHora);
+        if(fGes && (c.gestor||'') !== fGes) return;
+        if(fSem && sem !== fSem) return;
+        if(fDia && dia !== fDia) return;
+        realizadasBySem[sem] = (realizadasBySem[sem]||0) + 1;
+      });
+      // Semanas 1..4
+      const semanas = ['1','2','3','4'];
+      let totE=0, totR=0;
+      const rows = semanas.map(s=>{
+        const e = esperadasBySem[s]||0; const r = realizadasBySem[s]||0; const pct = e? Math.round((r/e)*100): (r?100:0);
+        totE+=e; totR+=r;
+        return {s,e,r,pct};
+      });
+      // Render
+      $('#kpiEsperadas').textContent = totE;
+      $('#kpiRealizadas').textContent = totR;
+      $('#kpiPct').textContent = (totE? Math.round((totR/totE)*100): (totR?100:0)) + '%';
+      const tb = $('#kpiTbl tbody');
+      tb.innerHTML = rows.map(o=>`<tr><td>${o.s}</td><td>${o.e}</td><td>${o.r}</td><td>${o.pct}%</td></tr>`).join('');
+    }
+
+    // ---------- BOOTSTRAP ----------
+    async function fetchCSV(url){
+      try{
+        const t = await fetch(url).then(r=>r.text());
+        return t ? csvToRows(t) : [];
+      }catch(e){
+        showErr('No se pudo leer: '+url);
+        return [];
+      }
+    }
+    async function boot(){
+      initMap();
+      // Cargar llamadas persistidas
+      try{ STATE.calls = JSON.parse(localStorage.getItem(CALLS_KEY)||'[]'); }catch(e){ STATE.calls=[]; }
+      // Cargar clientes
+      STATE.clientes = await fetchCSV(STATE.cfg.clientes);
+      if(!STATE.clientes.length) showErr('Clientes: sin datos. Revisa Configurar → URL CSV.');
+      fillCombos();
+      renderClientesTabla();
+      renderMap();
+      // Pre-cargar calendario si existe
+      if(STATE.cfg.calendario){
+        STATE.calendario = await fetchCSV(STATE.cfg.calendario);
+      }
+    }
+
+    // ---------- EVENTOS TOPBAR ----------
+    $('#btnRegistrar').addEventListener('click', ()=>{
+      // Prellenar con selección actual
+      const hdr = STATE.clientes[0]||[];
+      const idxCli = hdr.findIndex(h=>/cliente|nombre/i.test(String(h)));
+      const selCli = $('#fCliente').value || '';
+      $('#mCliente').value = selCli;
+      $('#mSemana').value = $('#fSemana').value || '';
+      $('#mResultado').value = 'Exitosa con Cita';
+      $('#mDuracion').value = '0';
+      $('#mFechaHora').value = '';
+      $('#mVendedor').value = $('#fVendedor').value || '';
+      $('#mGestor').value = $('#fGestor').value || '';
+      $('#dlgReg').showModal();
     });
-    $('#btnCancel').addEventListener('click', (e)=>{ e.preventDefault(); document.getElementById('dlgReg').close(); });
+    $('#btnCancel').addEventListener('click', (e)=>{ e.preventDefault(); $('#dlgReg').close(); });
     $('#btnSave').addEventListener('click', (e)=>{
       e.preventDefault();
-      const semana = document.getElementById('mSemana').value;
+      const semana = $('#mSemana').value;
       if(!['1','2','3','4'].includes(semana)){ alert('Seleccione el N° Semana (1..4)'); return; }
+      const required = [['#mCliente','Cliente'],['#mVendedor','Vendedor'],['#mGestor','Gestor'],['#mFechaHora','Fecha/hora']];
+      for(const [sel,lab] of required){ if(!$(sel).value.trim()){ alert('Complete: '+lab); return; } }
       const rec = {
-        fechaHora: document.getElementById('mFechaHora').value || new Date().toISOString(),
-        cliente: document.getElementById('mCliente').value,
-        codigo: document.getElementById('mCod').value,
-        vendedor: document.getElementById('mVendedor').value,
-        gestor: document.getElementById('mGestor').value,
+        fechaHora: $('#mFechaHora').value || new Date().toISOString(),
+        cliente: $('#mCliente').value,
+        codigo: $('#mCod').value,
+        vendedor: $('#mVendedor').value,
+        gestor: $('#mGestor').value,
         semana: semana,
-        resultado: document.getElementById('mResultado').value,
-        duracion: document.getElementById('mDuracion').value,
-        obs: document.getElementById('mObs').value
+        resultado: $('#mResultado').value,
+        duracion: $('#mDuracion').value,
+        obs: $('#mObs').value
       };
       STATE.calls.push(rec);
-      document.getElementById('dlgReg').close();
+      try{ localStorage.setItem(CALLS_KEY, JSON.stringify(STATE.calls)); }catch(e){}
+      $('#dlgReg').close();
       renderReporte();
+      showErr('Llamada registrada (guardada en este navegador).');
     });
-    $('#btnReporte').addEventListener('click', ()=>{ renderReporte(); document.getElementById('dlgRep').showModal(); });
-    $('#btnCerrarRep').addEventListener('click', ()=>document.getElementById('dlgRep').close());
+    $('#btnReporte').addEventListener('click', ()=>{ renderReporte(); $('#dlgRep').showModal(); });
+    $('#btnCerrarRep').addEventListener('click', ()=>$('#dlgRep').close());
 
-    // Placeholders
-    $('#btnAgenda').addEventListener('click', ()=>alert('Agenda: pendiente de conectar'));
-    $('#btnReporteRes').addEventListener('click', ()=>alert('Reporte Resumen: pendiente de conectar'));
-    $('#btnVerFicha').addEventListener('click', ()=>alert('Ver ficha: pendiente de conectar'));
-    $('#btnNuevoCliente').addEventListener('click', ()=>alert('Nuevo cliente: pendiente de conectar'));
-    $('#btnConfig').addEventListener('click', ()=>alert('Configurar: pendiente de conectar'));
-    $('#btnRestaurar').addEventListener('click', ()=>{ if(confirm('¿Restaurar estado?')){ STATE.calls=[]; renderReporte(); alert('Listo.'); } });
+    $('#btnReporteRes').addEventListener('click', async ()=>{
+      if(!STATE.cfg.calendario){
+        showErr('Configura primero la URL del Calendario (plan) para calcular KPI.');
+      }else if(!STATE.calendario.length){
+        STATE.calendario = await fetchCSV(STATE.cfg.calendario);
+        if(!STATE.calendario.length){
+          showErr('No se pudo cargar el Calendario. Verifica el enlace.');
+        }
+      }
+      kpiCompute();
+      $('#dlgKPI').showModal();
+    });
+    $('#btnCerrarKPI').addEventListener('click', ()=>$('#dlgKPI').close());
 
-    // Export CSV clientes
-    $('#btnExportCSV').addEventListener('click', ()=>{
-      const tbl = document.getElementById('tblClientes');
-      const out=[];
-      out.push(Array.from(tbl.querySelectorAll('thead th')).map(th=>`"${th.textContent.replace(/"/g,'""')}"`).join(','));
-      Array.from(tbl.querySelectorAll('tbody tr')).forEach(tr=>{
-        out.push(Array.from(tr.children).map(td=>`"${td.textContent.replace(/"/g,'""')}"`).join(','));
-      });
-      const blob = new Blob([out.join('\n')], {type:'text/csv;charset=utf-8;'});
-      const url = URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download='Clientes_filtrados.csv'; a.click(); setTimeout(()=>URL.revokeObjectURL(url), 400);
+    $('#btnVerFicha').addEventListener('click', ()=>alert('En esta versión la ficha es informativa. Selecciona un cliente en filtros para prellenar el modal de registro.'));
+    $('#btnNuevoCliente').addEventListener('click', ()=>{
+      if(STATE.cfg.formNuevoCliente){ window.open(STATE.cfg.formNuevoCliente, '_blank'); }
+      else showErr('Configura la URL del Formulario de "Nuevo cliente".');
+    });
+    $('#btnRestaurar').addEventListener('click', ()=>{
+      if(confirm('¿Restaurar estado? (limpia llamadas locales)')){
+        STATE.calls=[]; localStorage.removeItem(CALLS_KEY); renderReporte(); showErr('Estado restaurado.');
+      }
+    });
+    $('#btnConfig').addEventListener('click', ()=>{
+      $('#cfgClientes').value = STATE.cfg.clientes || '';
+      $('#cfgCalendario').value = STATE.cfg.calendario || '';
+      $('#cfgForm').value = STATE.cfg.formNuevoCliente || '';
+      $('#dlgCfg').showModal();
+    });
+    $('#btnCancelCfg').addEventListener('click', (e)=>{ e.preventDefault(); $('#dlgCfg').close(); });
+    $('#btnSaveCfg').addEventListener('click', (e)=>{
+      e.preventDefault();
+      STATE.cfg = {
+        clientes: $('#cfgClientes').value.trim(),
+        calendario: $('#cfgCalendario').value.trim(),
+        formNuevoCliente: $('#cfgForm').value.trim()
+      };
+      saveCfg(STATE.cfg);
+      $('#dlgCfg').close();
+      showErr('Configuración guardada. Recargando clientes...');
+      (async ()=>{
+        STATE.clientes = await fetchCSV(STATE.cfg.clientes);
+        fillCombos(); renderClientesTabla(); renderMap();
+        if(STATE.cfg.calendario){ STATE.calendario = await fetchCSV(STATE.cfg.calendario); }
+      })();
     });
 
+    // Export CSV/XLSX clientes
+    $('#btnExportCSV').addEventListener('click', ()=>exportTableToCSV('tblClientes','Clientes_filtrados.csv'));
+    $('#btnExportXLSX').addEventListener('click', ()=>exportTableToXLSX('tblClientes','Clientes_filtrados.xlsx'));
+
+    // Filtros reactividad
     ['fSemana','fDia','fVendedor','fGestor','fEmpresa','fBuscar','fCliente'].forEach(id=>{
       document.getElementById(id).addEventListener('input', ()=>{ renderClientesTabla(); renderMap(); });
       document.getElementById(id).addEventListener('change', ()=>{ renderClientesTabla(); renderMap(); });
     });
+    // Toggle filtros
     document.getElementById('btnFiltros').addEventListener('click', ()=>{
       const f = document.getElementById('filtros'); f.style.display = (f.style.display==='none'?'grid':'none'); f.style.gridTemplateColumns='repeat(6, minmax(160px, 1fr))';
     });
+    // Toggle leyenda
+    document.getElementById('btnLegend').addEventListener('click', ()=>{
+      const el = document.getElementById('legend');
+      el.style.display = (el.style.display==='none'?'block':'none');
+    });
 
-    async function fetchCSV(url){ const t = await fetch(url).then(r=>r.text()).catch(()=> ''); return t ? csvToRows(t) : []; }
-    async function boot(){
-      initMap();
-      STATE.clientes = await fetchCSV(SHEETS.clientes);
-      const hdr = STATE.clientes[0]||[];
-      fillCombos();
-      renderClientesTabla();
-      renderMap();
-    }
+    // Arranque
     boot();
   </script>
 </body>
