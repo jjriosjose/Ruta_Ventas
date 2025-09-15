@@ -1053,46 +1053,63 @@ body.show-resumen #screenResumenSem > .card {
 
 <script>
 (function(){ 
+  // === Config y helpers ===
   const CFG_KEY='cfg_llamadas_app';
-  const DEFAULT_CFG={usuarios:'https://docs.google.com/spreadsheets/d/e/2PACX-1vSGjr-XdLSamHpGQfoORmLfntJbLd-UbFpD7NdMM14x2JdMhxOYHTWQBlhYCMDu0ZTy3AYS-1Y3q91Y/pub?gid=1395226434&single=true&output=csv', clientes:'https://docs.google.com/spreadsheets/d/e/2PACX-1vSGjr-XdLSamHpGQfoORmLfntJbLd-UbFpD7NdMM14x2JdMhxOYHTWQBlhYCMDu0ZTy3AYS-1Y3q91Y/pub?gid=1016315198&single=true&output=csv', calendario:'https://docs.google.com/spreadsheets/d/e/2PACX-1vSGjr-XdLSamHpGQfoORmLfntJbLd-UbFpD7NdMM14x2JdMhxOYHTWQBlhYCMDu0ZTy3AYS-1Y3q91Y/pub?gid=223681507&single=true&output=csv', backend:'https://docs.google.com/spreadsheets/d/e/2PACX-1vSGjr-XdLSamHpGQfoORmLfntJbLd-UbFpD7NdMM14x2JdMhxOYHTWQBlhYCMDu0ZTy3AYS-1Y3q91Y/pub?gid=143166931&single=true&output=csv'};
+  const DEFAULT_CFG={
+    usuarios:'https://docs.google.com/spreadsheets/d/e/2PACX-1vSGjr-XdLSamHpGQfoORmLfntJbLd-UbFpD7NdMM14x2JdMhxOYHTWQBlhYCMDu0ZTy3AYS-1Y3q91Y/pub?gid=1395226434&single=true&output=csv',
+    clientes:'https://docs.google.com/spreadsheets/d/e/2PACX-1vSGjr-XdLSamHpGQfoORmLfntJbLd-UbFpD7NdMM14x2JdMhxOYHTWQBlhYCMDu0ZTy3AYS-1Y3q91Y/pub?gid=1016315198&single=true&output=csv',
+    calendario:'https://docs.google.com/spreadsheets/d/e/2PACX-1vSGjr-XdLSamHpGQfoORmLfntJbLd-UbFpD7NdMM14x2JdMhxOYHTWQBlhYCMDu0ZTy3AYS-1Y3q91Y/pub?gid=223681507&single=true&output=csv',
+    backend:'https://docs.google.com/spreadsheets/d/e/2PACX-1vSGjr-XdLSamHpGQfoORmLfntJbLd-UbFpD7NdMM14x2JdMhxOYHTWQBlhYCMDu0ZTy3AYS-1Y3q91Y/pub?gid=143166931&single=true&output=csv'
+  };
+  const cfg = (function(){ try{return Object.assign({}, DEFAULT_CFG, JSON.parse(localStorage.getItem(CFG_KEY)||'{}'));}catch(e){return DEFAULT_CFG;} })();
   const $=s=>document.querySelector(s);
   const $$=s=>Array.from(document.querySelectorAll(s));
-  const norm = s=>String(s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim();
-  const cfg = (function(){ try{return Object.assign({}, DEFAULT_CFG, JSON.parse(localStorage.getItem(CFG_KEY)||'{}'));}catch(e){return DEFAULT_CFG;} })();
+  const norm=s=>String(s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim();
 
   async function fetchCSV(url){
-    const txt = await fetch(url, {cache:'no-store'}).then(r=>r.text());
-    return txt.split(/\r?\n/).map(l=>l.split(','));
+    const t = await fetch(url,{cache:'no-store'}).then(r=>r.text());
+    // parser simple (celdas sin comillas). Si luego detectamos comillas, cambiamos parser full.
+    return t.split(/\r?\n/).filter(l=>l.length).map(l=>l.split(','));
   }
-  function pick(hdr,row,names){ const H=hdr.map(h=>norm(h)); for(const n of names){ const ix=H.indexOf(norm(n)); if(ix>-1) return row[ix]||''; } return ''; }
 
-  async function loadClientes(){ 
+  // === Carga específica a tus encabezados ===
+  async function loadClientes(){
     const rows = await fetchCSV(cfg.clientes);
-    const hdr = rows[0]||[];
+    const hdr  = rows[0]||[];
+    const Hidx = Object.fromEntries(hdr.map((h,i)=>[norm(h), i]));
+    const gi = (name)=> Hidx[norm(name)];
+    function val(r, name){ const ix = gi(name); return (ix!=null? r[ix] : '') || ''; }
     return rows.slice(1).filter(r=>r.some(Boolean)).map(r=>({
-      codigo:   pick(hdr,r,['codigo','cod','id','clienteid','code']),
-      cliente:  pick(hdr,r,['cliente','nombre','name']),
-      empresa:  pick(hdr,r,['empresa','company']),
-      vendedor: pick(hdr,r,['vendedor','seller','rep']),
-      gestor:   pick(hdr,r,['gestor','coordinador','supervisor','manager']),
-      lat:      Number(String(pick(hdr,r,['lat','latitud'])).replace(',','.'))||null,
-      lng:      Number(String(pick(hdr,r,['lng','long','longitud'])).replace(',','.'))||null
+      codigo:   String(val(r,'Cod Empresa')).trim(),
+      cliente:  val(r,'RazonSocial'),
+      empresa:  val(r,'Empresa'),
+      vendedor: val(r,'vendedor'),
+      gestor:   val(r,'gestor_servicio'),
+      lat:      Number(String(val(r,'latitud')).replace(',','.'))||null,
+      lng:      Number(String(val(r,'longitud')).replace(',','.'))||null,
+      provincia:val(r,'provincia'),
+      tel:      val(r,'Telefono1'),
+      cel:      val(r,'Celular')
     }));
   }
 
-  async function loadCalendario(){ 
+  async function loadCalendario(){
     const rows = await fetchCSV(cfg.calendario);
     const hdr  = rows[0]||[];
+    const Hidx = Object.fromEntries(hdr.map((h,i)=>[norm(h), i]));
+    const gi = (name)=> Hidx[norm(name)];
+    function val(r, name){ const ix = gi(name); return (ix!=null? r[ix] : '') || ''; }
     return rows.slice(1).filter(r=>r.some(Boolean)).map(r=>({
-      codigo:   pick(hdr,r,['codigo','cod','id_cliente','clienteid','code']),
-      cliente:  pick(hdr,r,['cliente','nombre']),
-      semana:   String(pick(hdr,r,['semana','week','sem'])).trim(),
-      dia:      String(pick(hdr,r,['dia','día','day'])).toUpperCase(),
-      vendedor: pick(hdr,r,['vendedor']),
-      gestor:   pick(hdr,r,['gestor','coordinador','supervisor'])
+      codigo:   String(val(r,'Cod Empresa')).trim(),
+      cliente:  val(r,'RazonSocial'),
+      semana:   String(val(r,'SEMANA')).trim(),
+      dia:      String(val(r,'DIA')).toUpperCase(),
+      vendedor: val(r,'vendedor'),
+      gestor:   val(r,'gestor_servicio')
     }));
   }
 
+  // === UI helpers ===
   function findControlByLabel(texto){
     const lbl = ($$('label').find(l=> norm(l.textContent).includes(norm(texto))));
     if(!lbl) return null;
@@ -1102,29 +1119,27 @@ body.show-resumen #screenResumenSem > .card {
     }
     return el;
   }
-
   function ensureClientesPanel(){
     const h = $$('h3,h4').find(x=> norm(x.textContent)==='clientes filtrados');
     if(h && h.parentElement) return h.parentElement;
     const wrap = document.createElement('div');
-    wrap.className = 'card';
-    wrap.style.marginTop='10px';
-    wrap.innerHTML = '<h3>Clientes filtrados</h3><div id="listClientes"></div>';
+    wrap.className='card'; wrap.style.marginTop='10px';
+    wrap.innerHTML='<h3>Clientes filtrados</h3><div id="listClientes"></div>';
     (document.getElementById('app')||document.body).appendChild(wrap);
     return wrap;
   }
   function renderTabla(list, mount){
     const rows = list.map(c=>`
-      <tr data-cod=\${c.codigo}>
-        <td class="muted">\${c.codigo||''}</td>
-        <td><button class="btn btn-sm" data-act="sel" data-cod=\${c.codigo}>Seleccionar</button></td>
-        <td>\${c.cliente||''}</td>
-        <td>\${c.vendedor||''}</td>
-        <td>\${c.gestor||''}</td>
-        <td>\${c.empresa||''}</td>
+      <tr data-cod="${c.codigo}">
+        <td class="muted">${c.codigo||''}</td>
+        <td><button class="btn btn-sm" data-act="sel" data-cod="${c.codigo}">Seleccionar</button></td>
+        <td>${c.cliente||''}</td>
+        <td>${c.vendedor||''}</td>
+        <td>${c.gestor||''}</td>
+        <td>${c.empresa||''}</td>
       </tr>`).join('');
-    mount.innerHTML = \`
-      <div class="help">Registros: \${list.length}</div>
+    mount.innerHTML = `
+      <div class="help">Registros: ${list.length}</div>
       <div class="scroll" style="max-height:480px;overflow:auto;border:1px solid var(--border);border-radius:8px">
         <table style="width:100%;border-collapse:collapse">
           <thead><tr>
@@ -1135,9 +1150,9 @@ body.show-resumen #screenResumenSem > .card {
             <th style="text-align:left;padding:8px;border-bottom:1px solid var(--border)">Gestor</th>
             <th style="text-align:left;padding:8px;border-bottom:1px solid var(--border)">Empresa</th>
           </tr></thead>
-          <tbody>\${rows}</tbody>
+          <tbody>${rows}</tbody>
         </table>
-      </div>\`;
+      </div>`;
     mount.querySelectorAll('[data-act="sel"]').forEach(b=>b.addEventListener('click', ev=>{
       const cod = ev.currentTarget.getAttribute('data-cod');
       const item = current.filtered.find(x=>String(x.codigo)===String(cod));
@@ -1147,7 +1162,6 @@ body.show-resumen #screenResumenSem > .card {
       }
     }));
   }
-
   function uniq(arr){ return Array.from(new Set(arr.filter(Boolean))); }
 
   const current = {clientes:[], cal:[], filtered:[]};
@@ -1167,11 +1181,11 @@ body.show-resumen #screenResumenSem > .card {
     const vEmp    = fEmp && fEmp.value? norm(fEmp.value):'';
     const vQ      = fBuscar && fBuscar.value? norm(fBuscar.value):'';
 
-    const byKey = (c)=> (c.codigo && String(c.codigo)) || ('@'+norm(c.cliente||''));
-    const idxCal = new Map(current.cal.map(r=>[byKey(r), r]));
+    // join por 'Cod Empresa' (clave en ambas)
+    const idxCal = new Map(current.cal.map(r=>[String(r.codigo), r]));
 
     const merged = current.clientes.map(c=>{ 
-      const cal = idxCal.get(byKey(c)) || {};
+      const cal = idxCal.get(String(c.codigo)) || {};
       return Object.assign({}, c, {
         vendedor: cal.vendedor || c.vendedor || '',
         gestor:   cal.gestor   || c.gestor   || '',
@@ -1205,10 +1219,10 @@ body.show-resumen #screenResumenSem > .card {
     if(fSemana && fSemana.options.length<=1) [1,2,3,4].forEach(w=>{ const o=document.createElement('option'); o.value=String(w); o.textContent='Semana '+w; fSemana.appendChild(o); });
     if(fDia && fDia.options.length<=1) ['Todos','LUNES','MARTES','MIERCOLES','MIÉRCOLES','JUEVES','VIERNES'].forEach(d=>{ const o=document.createElement('option'); o.value=d==='Todos'?'':d; o.textContent=d; fDia.appendChild(o); });
 
-    const vend = uniq(current.cal.map(r=>norm(r.vendedor||''))).filter(Boolean).sort();
-    const gest = uniq(current.cal.map(r=>norm(r.gestor||''))).filter(Boolean).sort();
-    if(fVend && fVend.options.length<=1) vend.forEach(v=>{ const o=document.createElement('option'); o.value=v; o.textContent=v.toUpperCase(); fVend.appendChild(o); });
-    if(fGest && fGest.options.length<=1) gest.forEach(g=>{ const o=document.createElement('option'); o.value=g; o.textContent=g.toUpperCase(); fGest.appendChild(o); });
+    const vend = uniq(current.cal.map(r=>r.vendedor||'')).filter(Boolean).sort((a,b)=>a.localeCompare(b,'es',{sensitivity:'base'}));
+    const gest = uniq(current.cal.map(r=>r.gestor||'')).filter(Boolean).sort((a,b)=>a.localeCompare(b,'es',{sensitivity:'base'}));
+    if(fVend && fVend.options.length<=1) vend.forEach(v=>{ const o=document.createElement('option'); o.value=v; o.textContent=v; fVend.appendChild(o); });
+    if(fGest && fGest.options.length<=1) gest.forEach(g=>{ const o=document.createElement('option'); o.value=g; o.textContent=g; fGest.appendChild(o); });
 
     [fSemana,fDia,fVend,fGest].forEach(el=> el && el.addEventListener('change', applyFiltros));
     const fBuscar = ($$('input').find(i=> i.placeholder && norm(i.placeholder).includes('nombre') ) );
