@@ -5069,9 +5069,17 @@ document.getElementById('rsTabReal').onclick = (e)=>{ e.target.classList.add('ac
       // Base sin cliente para cascada; incluir "Por asignar" si no hay semana/día en la fila
       const base = S.filter(x=>{
         if(window.isVendorExcluded && isVendorExcluded(x.vendedor)) return false;
-        if(fSemana && !(String(x.semana)===String(fSemana) || !x.semana || norm(x.semana)==='por asignar')) return false;
-        if(fDia && !(String(x.dia)===String(fDia) || !x.dia || norm(x.dia)==='por asignar')) return false;
-        if(fVend && String(x.vendedor)!==String(fVend)) return false;
+        
+        // Semana/Día: si ambos están seleccionados, exigir coincidencia exacta (sin "Por asignar").
+        // Si solo uno está seleccionado, permitir filas sin asignación en el otro campo.
+        if(fSemana && fDia){
+          if(!(String(x.semana)===String(fSemana))) return false;
+          if(!(String(x.dia)===String(fDia))) return false;
+        } else {
+          if(fSemana && !(String(x.semana)===String(fSemana) || !x.semana || norm(x.semana)==='por asignar')) return false;
+          if(fDia && !(String(x.dia)===String(fDia) || !x.dia || norm(x.dia)==='por asignar')) return false;
+        }
+if(fVend && String(x.vendedor)!==String(fVend)) return false;
         if(fGes && String(x.gestor)!==String(fGes)) return false;
         if(fEmp && String(x.empresa)!==String(fEmp)) return false;
         if(fBus){
@@ -5141,28 +5149,27 @@ document.getElementById('rsTabReal').onclick = (e)=>{ e.target.classList.add('ac
         bounds.push([x.lat,x.lon]);
       }
 
-      function step(){
+      
+function step(){
         const end = Math.min(i+batch, n);
         for(; i<end; i++){ addOne(items[i]); }
         if(i < n){ requestAnimationFrame(step); }
         else {
           const hint = document.getElementById('hintZero'); if(hint) hint.style.display = n? 'none':'block';
-          if(bounds.length && map.fitBounds) map.fitBounds(bounds,{padding:[20,20]});
+          // Centrado inicial en República Dominicana si no hay filtros activos
+          const RD=[18.735693,-70.162651];
+          const val = id => (document.getElementById(id)||{}).value || '';
+          const fSemana = val('fSemana'), fDia = val('fDia'), fVend = val('fVendedor'), fGes = val('fGestor'), fEmp = val('fEmpresa'), fCli = val('fCliente'), fBus = val('fBuscar');
+          const noActiveFilters = !fSemana && !fDia && !fVend && !fGes && !fEmp && !fCli && !fBus;
+          if(noActiveFilters){ map.setView(RD,8); }
+          else if(bounds.length && map.fitBounds) { map.fitBounds(bounds,{padding:[20,20]}); }
           setTimeout(()=> map.invalidateSize && map.invalidateSize(), 50);
         }
       }
       step();
     }catch(e){
-      console.warn('renderMap chunk error', e);
-      if(typeof _renderMapFast==='function') _renderMapFast();
-    }
-  };
-
-  // -------- Reporte: listas desplegables de vendedor/gestor desde Calendario --------
-  const _openReporte = window.openReporte;
-  window.openReporte = function(){
-    try{
-      // Poblar selects antes de abrir
+      consol
+r selects antes de abrir
       const cal = (window.STATE && Array.isArray(STATE.joined))? STATE.joined : [];
       const vs = uniq(cal.map(x=>x.vendedor)).sort((a,b)=> a.localeCompare(b,'es',{sensitivity:'base'}));
       const gs = uniq(cal.map(x=>x.gestor)).sort((a,b)=> a.localeCompare(b,'es',{sensitivity:'base'}));
