@@ -3,26 +3,33 @@
 <head>
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
-  <title>Gestión de Llamadas — v7.6.9</title>
+  <title>Gestión de Llamadas — v7.7.0</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
-  <script>window.__BUILD__={VERSION:'7.6.9',stamp:'2025-09-15 03:28 UTC'};</script>
+  <script>window.__BUILD__={VERSION:'7.7.0',stamp:'2025-09-15 03:39 UTC'};</script>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.19.3/dist/xlsx.full.min.js"></script>
   <style>
-    :root{--bg:#f6f7fb;--card:#fff;--border:#e6e8ee;--text:#0f172a;--muted:#64748b;--accent:#10b981}
+    :root{--bg:#f6f7fb;--card:#fff;--border:#e6e8ee;--text:#0f172a;--muted:#64748b;--accent:#10b981;--danger:#ef4444}
     *{box-sizing:border-box} body{margin:0;font-family:Inter,system-ui,Arial,sans-serif;background:var(--bg);color:var(--text)}
     header{border-bottom:1px solid var(--border);background:#fff;position:sticky;top:0;z-index:10}
-    .wrap{max-width:1100px;margin:auto;padding:14px}
+    .wrap{max-width:1200px;margin:auto;padding:14px}
     .chip{border:1px solid var(--border);border-radius:999px;padding:6px 10px;background:#fff;font-size:12px;margin-left:8px}
     .card{background:#fff;border:1px solid var(--border);border-radius:14px;padding:14px;box-shadow:0 6px 18px rgba(15,23,42,.05)}
     .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+    .toolbar{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
     label{font-size:12px;font-weight:800;color:#111}
-    input,button{font-family:inherit} input{width:100%;padding:10px;border:1px solid var(--border);border-radius:10px}
+    input,button,select{font-family:inherit} input,select{width:100%;padding:10px;border:1px solid var(--border);border-radius:10px}
     .btn{border:1px solid var(--border);padding:10px 12px;border-radius:10px;background:#fff;cursor:pointer}
     .btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+    .btn.danger{background:var(--danger);border-color:var(--danger);color:#fff}
     .hidden{display:none!important} .help{font-size:12px;color:var(--muted)}
     .badge{position:fixed;right:10px;bottom:10px;background:#111;color:#fff;padding:6px 10px;border-radius:10px;font-size:11px;opacity:.85}
-    textarea{width:100%;height:160px;border:1px solid var(--border);border-radius:10px;padding:10px}
+    .grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px}
+    .item{border:1px solid var(--border);border-radius:12px;padding:10px}
+    .item h4{margin:0 0 4px 0}
+    .tag{font-size:11px;padding:2px 6px;border-radius:999px;border:1px solid var(--border);background:#f8fafc;margin-left:6px}
+    .muted{color:var(--muted)}
   </style>
 </head>
 <body>
@@ -30,8 +37,14 @@
     <div class="wrap row" style="justify-content:space-between">
       <div class="row" style="gap:10px">
         <strong style="font-size:22px">Gestión de Llamadas</strong>
-        <span class="chip">LLAMADAS v7.6.9</span>
-        <span id="chipUsers" class="chip" style="display:none"></span>
+        <span class="chip">LLAMADAS v7.7.0</span>
+        <a id="chipUsers" class="chip" target="_blank" rel="noopener">Usuarios CSV</a>
+      </div>
+      <div class="toolbar" id="topbar" style="display:none">
+        <button id="btnAgenda" class="btn">📅 Agenda</button>
+        <button id="btnReporte" class="btn">📊 Reporte</button>
+        <button id="btnConfig" class="btn">⚙️ Configurar</button>
+        <button id="btnLogout" class="btn">⎋ Salir</button>
       </div>
       <div class="row"><span class="chip">Single-File</span></div>
     </div>
@@ -42,7 +55,7 @@
     <div class="card">
       <h3 style="margin-top:0">Ingreso</h3>
       <div class="help" style="margin-bottom:6px">
-        Conecta tus Google Sheets publicados (CSV) desde <b>⚙️ Configurar</b>. Demo: <code>demo</code> / <code>1234 o vendedor</code> / <code>1234</code>.
+        Demo: <code>demo</code> / <code>1234 o vendedor</code> / <code>1234</code>. Configura tu CSV de Usuarios en ⚙️.
       </div>
       <div class="row">
         <div style="flex:1"><label>Usuario</label><input id="loginUser" placeholder="ej: JORGE"></div>
@@ -59,13 +72,50 @@
     </div>
   </main>
 
-  <!-- APP -->
+  <!-- APP HOME -->
   <section id="app" class="wrap hidden">
     <div class="card">
       <h3 style="margin-top:0">¡Login OK!</h3>
       <div class="help">Usuario: <b id="userName"></b> • Permiso: <b id="userRole"></b></div>
-      <p>Desde aquí ya podemos activar Agenda, Reportes y demás módulos.</p>
-      <button id="btnLogout" class="btn">Salir</button>
+      <div class="toolbar" style="margin-top:10px">
+        <button id="goAgenda" class="btn primary">Ir a Agenda</button>
+        <button id="goReporte" class="btn">Abrir Reporte</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- AGENDA -->
+  <section id="agenda" class="wrap hidden">
+    <div class="card">
+      <div class="row" style="justify-content:space-between">
+        <h3 style="margin:0">Visitas programadas</h3>
+        <div class="toolbar">
+          <button id="btnAgExport" class="btn">⇩ Exportar Excel</button>
+          <button id="btnAgCerrar" class="btn">Cerrar</button>
+        </div>
+      </div>
+      <div class="row" style="margin-top:8px">
+        <div style="flex:1"><label>Desde</label><input id="agDesde" type="date"></div>
+        <div style="flex:1"><label>Hasta</label><input id="agHasta" type="date"></div>
+        <div style="flex:1"><label>Estatus</label><select id="agEstatus"><option value="">(todos)</option><option>programada</option><option>reprogramada</option><option>realizada</option><option>cancelada</option></select></div>
+        <div style="flex:1"><label>Vendedor</label><select id="agVendedor"><option value="">(todos)</option></select></div>
+        <div style="flex:1"><label>Gestor</label><select id="agGestor"><option value="">(todos)</option></select></div>
+      </div>
+
+      <div class="grid3" style="margin-top:12px">
+        <div>
+          <h4>Hoy</h4>
+          <div id="colHoy"></div>
+        </div>
+        <div>
+          <h4>Esta semana</h4>
+          <div id="colSemana"></div>
+        </div>
+        <div>
+          <h4>Futuras</h4>
+          <div id="colFuturas"></div>
+        </div>
+      </div>
     </div>
   </section>
 
@@ -83,70 +133,68 @@
     </div>
   </section>
 
-  <div class="badge">v7.6.9 • 2025-09-15 03:28 UTC</div>
+  <div class="badge">v7.7.0 • 2025-09-15 03:39 UTC</div>
 
   <script>
   (function(){ 
-    const CFG_KEY='cfg_llamadas_app'; const AUTH_KEY='auth_llamadas_user';
+    const CFG_KEY='cfg_llamadas_app'; const AUTH_KEY='auth_llamadas_user'; const CALLS_KEY='calls_llamadas_app';
     const DEFAULT_CFG={usuarios:'https://docs.google.com/spreadsheets/d/e/2PACX-1vSGjr-XdLSamHpGQfoORmLfntJbLd-UbFpD7NdMM14x2JdMhxOYHTWQBlhYCMDu0ZTy3AYS-1Y3q91Y/pub?gid=1395226434&single=true&output=csv'};
     const $=s=>document.querySelector(s);
+    const $$=s=>Array.from(document.querySelectorAll(s));
     const norm = s => String(s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim();
-    const QS=new URLSearchParams(location.search); if(QS.get('logout')==='1'){ try{ localStorage.removeItem(AUTH_KEY) }catch(e){} }
-    const STATE={cfg:loadCfg(), users:[], current:null};
+    const QS=new URLSearchParams(location.search); if(QS.get('logout')==='1'){ try{ localStorage.removeItem(AUTH_KEY); }catch(e){} }
+    const STATE={cfg:loadCfg(), users:[], current:null, calls:[], visitas:[]};
 
+    // --- utils
     function loadCfg(){ try{return Object.assign({}, DEFAULT_CFG, JSON.parse(localStorage.getItem(CFG_KEY)||'{}'));}catch(e){return DEFAULT_CFG;} }
     function saveCfg(c){ localStorage.setItem(CFG_KEY, JSON.stringify(c)); }
-    function setView(v){ $('#login').classList.toggle('hidden', v!=='login'); $('#app').classList.toggle('hidden', v!=='app'); $('#cfg').classList.toggle('hidden', v!=='cfg'); }
+    function setView(v){ $('#login').classList.toggle('hidden', v!=='login'); $('#app').classList.toggle('hidden', v!=='app'); $('#cfg').classList.toggle('hidden', v!=='cfg'); $('#agenda').classList.toggle('hidden', v!=='agenda'); $('#topbar').style.display = (v==='app'||v==='agenda')? 'flex':'none'; }
+    function dayName(d){ return ['Domingo','Lunes','Martes','Miércoles','Jueves','Viernes','Sábado'][d.getDay()]; }
+    function startOfWeek(d){ const x=new Date(d); const day=(x.getDay()||7)-1; x.setDate(x.getDate()-day); x.setHours(0,0,0,0); return x; }
+    function endOfWeek(d){ const s=startOfWeek(d); s.setDate(s.getDate()+6); s.setHours(23,59,59,999); return s; }
+    function fmtDate(dt){ if(!dt) return ''; const d=new Date(dt); if(isNaN(d)) return ''; const pad=n=>String(n).padStart(2,'0'); return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate()); }
+    function fmtTime(dt){ if(!dt) return ''; const d=new Date(dt); if(isNaN(d)) return ''; const pad=n=>String(n).padStart(2,'0'); return pad(d.getHours())+':'+pad(d.getMinutes()); }
 
-    async function fetchCSV(url){
-      try{ const t=await fetch(url,{cache:'no-store'}).then(r=>r.text()); const rows=t.split(/\r?\n/).map(line=>line.split(',')); return rows; }
-      catch(e){ console.error(e); alert('No se pudo leer CSV de Usuarios'); return []; }
-    }
-    function mapUser(hdr,row){
-      const H=hdr.map(h=>norm(h));
-      function val(nameArr){ for(const nm of nameArr){ const ix=H.indexOf(norm(nm)); if(ix>-1) return row[ix]||''; } return ''; }
-      return { 
-        Usuario: val(['usuario','user','correo','email','login','vendedor','gestor']),
-        Permiso: val(['permiso','rol','role','perfil'])||'usuario',
-        Password: val(['contraseña','contrasena','password','pass','clave'])
-      };
-    }
-    async function loadUsers(){
-      const rows=await fetchCSV(STATE.cfg.usuarios);
-      if(!rows.length){ $('#usersChip').textContent='Usuarios: 0'; return; }
-      const hdr=rows[0]; STATE.users=rows.slice(1).filter(r=>r.some(Boolean)).map(r=>mapUser(hdr,r));
-      $('#usersChip').textContent='Usuarios: '+STATE.users.length;
-    }
+    async function fetchCSV(url){ try{ const t=await fetch(url,{cache:'no-store'}).then(r=>r.text()); const rows=t.split(/\r?\n/).map(line=>line.split(',')); return rows; }catch(e){ console.error(e); alert('No se pudo leer CSV'); return []; } }
+    function mapUser(hdr,row){ const H=hdr.map(h=>norm(h)); function val(a){ for(const nm of a){ const ix=H.indexOf(norm(nm)); if(ix>-1) return row[ix]||''; } return ''; } return {Usuario:val(['usuario','user','correo','email','login','vendedor','gestor']), Permiso:val(['permiso','rol','role','perfil'])||'usuario', Password:val(['contraseña','contrasena','password','pass','clave'])}; }
+    async function loadUsers(){ const rows=await fetchCSV(STATE.cfg.usuarios); if(!rows.length) return; const hdr=rows[0]; STATE.users=rows.slice(1).filter(r=>r.some(Boolean)).map(r=>mapUser(hdr,r)); $('#usersChip').textContent='Usuarios: '+STATE.users.length; $('#chipUsers').setAttribute('href', STATE.cfg.usuarios); }
     function showProbe(msg){ $('#probeOut').innerHTML=msg; }
 
-    async function doLogin(){
-      const u=$('#loginUser').value.trim(); const p=$('#loginPass').value.trim();
-      if(!u){ alert('Ingrese usuario'); return; }
-      if(!STATE.users.length) await loadUsers();
-      const cand=STATE.users.find(r=>[r.Usuario,r.Correo,r.Email,r.Login,r.Vendedor,r.Gestor].some(x=>norm(x)===norm(u)));
-      if(!cand){ alert('Usuario no encontrado'); return; }
-      const ok=(String(cand.Password||'').trim()===p) || (p==='1234');
-      if(!ok){ alert('Contraseña incorrecta'); return; }
-      STATE.current={user:cand.Usuario||u, role:(cand.Permiso||'usuario')};
-      try{ localStorage.setItem(AUTH_KEY, JSON.stringify(STATE.current)); }catch(_){}
-      $('#userName').textContent=STATE.current.user; $('#userRole').textContent=STATE.current.role;
-      setView('app');
-    }
+    // --- login
+    async function doLogin(){ const u=$('#loginUser').value.trim(); const p=$('#loginPass').value.trim(); if(!u){alert('Ingrese usuario');return;} if(!STATE.users.length) await loadUsers(); const cand=STATE.users.find(r=>[r.Usuario].some(x=>norm(x)===norm(u))); if(!cand){ alert('Usuario no encontrado'); return; } const ok=(String(cand.Password||'').trim()===p) || (p==='1234'); if(!ok){ alert('Contraseña incorrecta'); return; } STATE.current={user:cand.Usuario||u, role:(cand.Permiso||'usuario')}; try{ localStorage.setItem(AUTH_KEY, JSON.stringify(STATE.current)); }catch(_){} $('#userName').textContent=STATE.current.user; $('#userRole').textContent=STATE.current.role; setView('app'); }
 
-    function boot(){
-      $('#chipUsers').style.display='inline-flex';
-      $('#chipUsers').textContent='Usuarios CSV';
+    // --- agenda data (desde llamadas locales)
+    function loadCallsLocal(){ try{ STATE.calls=JSON.parse(localStorage.getItem(CALLS_KEY)||'[]'); }catch(e){ STATE.calls=[]; } }
+    function buildVisitas(){ 
+      const arr=(STATE.calls||[]).filter(r=>r.fechaHora);
+      STATE.visitas = arr.map((r,i)=>({ id: i+1, cliente:r.cliente||'', cod:r.codigo||'', vendedor:r.vendedor||'', gestor:r.gestor||'', fecha:fmtDate(r.fechaHora), hora:fmtTime(r.fechaHora), estatus:r.estatus_visita||'programada', obs:r.obs||'' }));
+    }
+    function saveCallsLocal(){ try{ localStorage.setItem(CALLS_KEY, JSON.stringify(STATE.calls)); }catch(_){} }
+
+    // --- agenda render
+    function uniq(a){ return Array.from(new Set(a.filter(Boolean))); }
+    function applyAgFilters(list){ const d1=$('#agDesde').value? new Date($('#agDesde').value):null; const d2=$('#agHasta').value? new Date($('#agHasta').value):null; const est=$('#agEstatus').value.trim().toLowerCase(); const ven=$('#agVendedor').value.trim().toLowerCase(); const ges=$('#agGestor').value.trim().toLowerCase(); return list.filter(v=>{ const dv=v.fecha?new Date(v.fecha):null; if(d1 && dv && dv<d1) return false; if(d2 && dv && dv>d2) return false; if(est && (String(v.estatus||'').toLowerCase()!==est)) return false; if(ven && norm(v.vendedor)!==ven) return false; if(ges && norm(v.gestor)!==ges) return false; return true; }); }
+    function pickColumns(list){ const today=new Date(); const sOfW=startOfWeek(today), eOfW=endOfWeek(today); const hoy=[], semana=[], futuras=[]; list.forEach(v=>{ const d=v.fecha?new Date(v.fecha):null; if(!d) return; if(d.toDateString()===today.toDateString()) hoy.push(v); else if(d>=sOfW && d<=eOfW) semana.push(v); else if(d>eOfW) futuras.push(v); }); return {hoy, semana, futuras}; }
+    function fillCombosAg(){ const ven=uniq(STATE.visitas.map(v=>v.vendedor)).sort(); const ges=uniq(STATE.visitas.map(v=>v.gestor)).sort(); $('#agVendedor').innerHTML='<option value="">(todos)</option>'+ven.map(v=>`<option>{v}</option>`).join(''); $('#agGestor').innerHTML='<option value="">(todos)</option>'+ges.map(v=>`<option>{v}</option>`).join(''); }
+    function itemHTML(v, idx){ const disDel = STATE.current?.role!=='administrador' ? 'disabled' : ''; return `<div class="item"><h4>${v.cliente||'(sin nombre)'} <span class="tag">${v.cod||''}</span></h4><div class="muted" style="margin-bottom:6px">${v.vendedor||''} • ${v.gestor||''}</div><div class="row"><div style="flex:1"><label>Fecha</label><input type="date" value="${v.fecha||''}" data-k="fecha" data-ix="${idx}"></div><div style="flex:1"><label>Hora</label><input type="time" value="${v.hora||''}" data-k="hora" data-ix="${idx}"></div><div style="flex:1"><label>Estatus</label><select data-k="estatus" data-ix="${idx}"><option ${String(v.estatus)==='programada'?'selected':''}>programada</option><option ${String(v.estatus)==='reprogramada'?'selected':''}>reprogramada</option><option ${String(v.estatus)==='realizada'?'selected':''}>realizada</option><option ${String(v.estatus)==='cancelada'?'selected':''}>cancelada</option></select></div></div><div class="row" style="margin-top:8px"><button class="btn primary" data-act="save" data-ix="${idx}">Guardar</button><button class="btn danger" data-act="del" data-ix="${idx}" ${disDel}>Eliminar</button></div></div>`; }
+    function renderAgenda(){ loadCallsLocal(); buildVisitas(); fillCombosAg(); const filtered=applyAgFilters(STATE.visitas); const cols=pickColumns(filtered); function paint(id, list){ const el=document.getElementById(id); el.innerHTML=list.map((v,i)=>itemHTML(v, i)).join('')||'<div class="muted">Sin elementos</div>'; } paint('colHoy', cols.hoy); paint('colSemana', cols.semana); paint('colFuturas', cols.futuras); attachAgendaEvents(); setView('agenda'); }
+    function attachAgendaEvents(){ $$('#agenda input, #agenda select').forEach(el=>{ el.addEventListener('change', (ev)=>{ const ix=Number(ev.target.getAttribute('data-ix')); const k=ev.target.getAttribute('data-k'); if(Number.isFinite(ix) && k){ const v=STATE.visitas[ix]; if(v) v[k]=ev.target.value; } }); }); $$('#agenda [data-act="save"]').forEach(btn=>btn.addEventListener('click', ev=>{ const ix=Number(ev.target.getAttribute('data-ix')); const v=STATE.visitas[ix]; if(!v) return; const c=STATE.calls.find(x=>(x.cliente||'')===v.cliente && (x.codigo||'')===v.cod); if(c){ const iso=v.fecha? (v.hora? v.fecha+'T'+v.hora: v.fecha+'T09:00'):''; c.fechaHora=iso; c.estatus_visita=v.estatus; saveCallsLocal(); alert('Guardado'); } })); $$('#agenda [data-act="del"]').forEach(btn=>btn.addEventListener('click', ev=>{ if(STATE.current?.role!=='administrador'){ alert('Solo administrador puede eliminar'); return; } const ix=Number(ev.target.getAttribute('data-ix')); const v=STATE.visitas[ix]; if(!v) return; STATE.calls = STATE.calls.filter(x=> !((x.cliente||'')===v.cliente && (x.codigo||'')===v.cod && fmtDate(x.fechaHora)===v.fecha)); saveCallsLocal(); renderAgenda(); })); }
+
+    function exportAgendaExcel(){ const filtered=applyAgFilters(STATE.visitas); const aoa=[['Fecha','Hora','Cliente','Cod','Vendedor','Gestor','Estatus']]; filtered.forEach(v=>aoa.push([v.fecha||'', v.hora||'', v.cliente||'', v.cod||'', v.vendedor||'', v.gestor||'', v.estatus||''])); const ws=XLSX.utils.aoa_to_sheet(aoa); const wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, 'Agenda'); XLSX.writeFile(wb, 'Agenda_programada.xlsx'); }
+
+    // --- boot
+    function boot(){ 
       $('#btnLogin').addEventListener('click', doLogin);
-      $('#btnProbe').addEventListener('click', async()=>{
-        showProbe('Cargando Usuarios...');
-        await loadUsers();
-        const u=$('#loginUser').value||''; const cand=STATE.users.find(r=>norm(r.Usuario)===norm(u) || norm(r.Login)===norm(u) || norm(r.Vendedor)===norm(u) || norm(r.Gestor)===norm(u));
-        showProbe('Leídos: <b>'+STATE.users.length+'</b> • Usuario digitado: <b>'+ (u||'(vacío)') +'</b> • Match: <b>'+ (cand? (cand.Usuario||cand.Login||'-'):'NO') +'</b>');
-      });
+      $('#btnProbe').addEventListener('click', async()=>{ showProbe('Cargando Usuarios...'); await loadUsers(); const u=$('#loginUser').value||''; const cand=STATE.users.find(r=>norm(r.Usuario)===norm(u) || norm(r.Login)===norm(u) || norm(r.Vendedor)===norm(u) || norm(r.Gestor)===norm(u)); showProbe('Leídos: <b>'+STATE.users.length+'</b> • Usuario digitado: <b>'+ (u||'(vacío)') +'</b> • Match: <b>'+ (cand? (cand.Usuario||cand.Login||'-'):'NO') +'</b>'); });
       $('#btnCfgOpen').addEventListener('click',()=>{ $('#cfgUsuarios').value=STATE.cfg.usuarios; setView('cfg'); });
       $('#btnCfgCancel').addEventListener('click',()=>setView('login'));
-      $('#btnCfgSave').addEventListener('click', async()=>{ STATE.cfg={usuarios:$('#cfgUsuarios').value.trim()||'https://docs.google.com/spreadsheets/d/e/2PACX-1vSGjr-XdLSamHpGQfoORmLfntJbLd-UbFpD7NdMM14x2JdMhxOYHTWQBlhYCMDu0ZTy3AYS-1Y3q91Y/pub?gid=1395226434&single=true&output=csv'}; saveCfg(STATE.cfg); await loadUsers(); setView('login'); alert('Guardado. Usuarios recargados: '+STATE.users.length); });
+      $('#btnCfgSave').addEventListener('click', async()=>{ STATE.cfg={usuarios:$('#cfgUsuarios').value.trim()||'https://docs.google.com/spreadsheets/d/e/2PACX-1vSGjr-XdLSamHpGQfoORmLfntJbLd-UbFpD7NdMM14x2JdMhxOYHTWQBlhYCMDu0ZTy3AYS-1Y3q91Y/pub?gid=1395226434&single=true&output=csv'}; localStorage.setItem('cfg_llamadas_app', JSON.stringify(STATE.cfg)); await loadUsers(); setView('login'); alert('Guardado. Usuarios recargados: '+STATE.users.length); });
       $('#btnLogout').addEventListener('click',()=>{ localStorage.removeItem(AUTH_KEY); STATE.current=null; setView('login'); });
+      $('#btnAgenda').addEventListener('click', renderAgenda);
+      $('#goAgenda').addEventListener('click', renderAgenda);
+      $('#btnAgExport').addEventListener('click', exportAgendaExcel);
+      $('#btnAgCerrar').addEventListener('click', ()=>setView('app'));
+      $('#btnConfig').addEventListener('click', ()=>{ $('#cfgUsuarios').value=STATE.cfg.usuarios; setView('cfg'); });
       loadUsers();
     }
 
