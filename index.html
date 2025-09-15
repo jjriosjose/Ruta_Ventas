@@ -4859,113 +4859,12 @@ document.getElementById('rsTabReal').onclick = (e)=>{ e.target.classList.add('ac
 
 
 <script>
-// === GW PATCH: Semana por filtro y duración en minutos ===
-(function(){
-  // 1) Semana por defecto = filtro principal (fSemana) si 1..4
-  const _open = window.openCallModal;
-  window.openCallModal = function(){
-    if(_open) _open();
-    try{
-      const fw = (document.getElementById('fSemana')||{}).value;
-      if(fw && ['1','2','3','4'].includes(String(fw))) {
-        const s = document.getElementById('callSemana');
-        if(s) s.value = String(fw);
-      }
-    }catch(e){ console.warn(e); }
-  };
-
-  // 2) Cambiar etiqueta a "Duración (min)"
-  document.addEventListener('DOMContentLoaded', function(){
-    try{
-      const inp = document.getElementById('callDuracion');
-      if(inp){
-        const lbl = inp.parentElement.querySelector('label');
-        if(lbl) lbl.textContent = 'Duración (min)';
-        if(!inp.step) inp.step = '1';
-        if(!inp.min) inp.min = '0';
-      }
-    }catch(e){}
-  });
-
-  // 3) Guardar: convertir minutos -> segundos antes de llamar a la función original
-  const _save = window.saveCallRecord;
-  window.saveCallRecord = function(){
-    const inp = document.getElementById('callDuracion');
-    let oldVal = null;
-    if(inp){
-      const mins = Number(inp.value||0);
-      oldVal = inp.value;
-      inp.value = String(Math.round(mins*60)); // original guarda en duracion_seg
-    }
-    try{ if(_save) return _save(); }
-    finally{ if(inp && oldVal!=null) inp.value = oldVal; }
-  };
-
-  // 4) Reporte: mostrar duración en MINUTOS si existe o convertir desde seg.
-  const _renderRep = window.renderReporte;
-  window.renderReporte = function(){
-    if(_renderRep) _renderRep();
-    try{
-      const ths = document.querySelectorAll('#repTbl thead th');
-      ths.forEach(th => { if(/duraci/i.test(th.textContent)) th.textContent = 'Duración (min)'; });
-      // Reprocesar filas para mostrar minutos (si los datos son segundos)
-      const rows = document.querySelectorAll('#repTbl tbody tr');
-      // buscar índice de la columna de duración
-      let durIdx = -1;
-      ths.forEach((th,i)=>{ if(/duraci/i.test(th.textContent)) durIdx=i; });
-      if(durIdx>=0){
-        rows.forEach(tr=>{
-          const td = tr.children[durIdx];
-          if(td){
-            const n = Number(td.textContent.replace(',', '.'));
-            if(!isNaN(n) && n>0 && n>10){ // si parecen segundos, convertir a min
-              td.textContent = Math.round(n/60);
-            }
-          }
-        });
-      }
-    }catch(e){ console.warn(e); }
-  };
-})();
-</script>
-
-
-<script>
-// === GW PATCH: Semana constante (no depende de fecha) ===
-(function(){
-  // En el modal, fijamos N° Semana así:
-  // 1) Si el filtro principal 'fSemana' tiene 1..4 → usarlo
-  // 2) Si no, usar la semana del cliente seleccionado desde STATE.joined (si existe)
-  // 3) Nunca calcular por fecha
-  const _open = window.openCallModal;
-  window.openCallModal = function(){
-    if(_open) _open();
-    try{
-      const s = document.getElementById('callSemana');
-      if(!s) return;
-      const fw = (document.getElementById('fSemana')||{}).value;
-      if(fw && ['1','2','3','4'].includes(String(fw))) {
-        s.value = String(fw);
-        return;
-      }
-      // tomar del cliente seleccionado (join con calendario)
-      if(window.STATE && STATE.selected && typeof STATE.selected.semana !== 'undefined'){
-        const sem = String(STATE.selected.semana||'').trim();
-        if(['1','2','3','4'].includes(sem)) s.value = sem;
-      }
-    }catch(e){ console.warn('set semana default', e); }
-  };
-})();
-</script>
-
-
-<script>
-// === GW PATCH: N° Semana -> opciones [Seleccionar,1,2,3,4] y default 'Seleccionar' ===
+// === GW PATCH: N° Semana obligatorio + Cita (Tipo/Fecha/Hora) obligatorios ===
 (function(){
   function setSemanaOptionsDefault() {
     var s = document.getElementById('callSemana');
     if(!s) return;
-    // Reescribir opciones
+    // Re-crear opciones: Seleccionar, 1,2,3,4
     s.innerHTML = '';
     var opts = [
       {v:'', t:'Seleccionar'},
@@ -4976,17 +4875,80 @@ document.getElementById('rsTabReal').onclick = (e)=>{ e.target.classList.add('ac
       op.value = o.v; op.textContent = o.t;
       s.appendChild(op);
     });
-    s.value = ''; // default Seleccionar
+    s.value = ''; // default
   }
 
-  // Al abrir el modal, siempre dejar 'Seleccionar'
+  // Al abrir el modal, dejar "Seleccionar"
   var _openCallModal = window.openCallModal;
   window.openCallModal = function(){
     if(_openCallModal) _openCallModal();
-    try{ setSemanaOptionsDefault(); }catch(e){ console.warn(e); }
+    try{ setSemanaOptionsDefault(); }catch(e){}
+    try{
+      // ajustar etiqueta de duración a (min) si está disponible
+      var d = document.getElementById('callDuracion');
+      if(d){
+        var lbl = d.parentElement.querySelector('label');
+        if(lbl) lbl.textContent = 'Duración (min)';
+        if(!d.min) d.min = '0';
+        if(!d.step) d.step = '1';
+      }
+    }catch(e){}
   };
 
-  // También al cargar la app por si el modal ya estuviera en DOM
+  // Helpers de validación
+  function markInvalid(el, on){
+    if(!el) return;
+    el.style.borderColor = on ? '#e53935' : '';
+  }
+  function validSemana(){ 
+    var v = (document.getElementById('callSemana')||{}).value || '';
+    return ['1','2','3','4'].includes(String(v));
+  }
+  function validCitaTipo(){ 
+    var v = (document.getElementById('callCitaTipo')||{}).value || '';
+    return v && v !== 'sin_cita';
+  }
+  function validCitaFecha(){ 
+    var v = (document.getElementById('callCitaFecha')||{}).value || '';
+    return !!v;
+  }
+  function validCitaHora(){ 
+    var v = (document.getElementById('callCitaHora')||{}).value || '';
+    return !!v;
+  }
+
+  // Hook guardar para validar primero
+  var _save = window.saveCallRecord;
+  window.saveCallRecord = function(){
+    var ok = true, falta = [];
+    var s = document.getElementById('callSemana');
+    var t = document.getElementById('callCitaTipo');
+    var f = document.getElementById('callCitaFecha');
+    var h = document.getElementById('callCitaHora');
+
+    if(!validSemana()){ ok=false; falta.push('N° Semana'); markInvalid(s, true); } else { markInvalid(s, false); }
+    if(!validCitaTipo()){ ok=false; falta.push('Tipo de cita'); markInvalid(t, true); } else { markInvalid(t, false); }
+    if(!validCitaFecha()){ ok=false; falta.push('Fecha de cita'); markInvalid(f, true); } else { markInvalid(f, false); }
+    if(!validCitaHora()){ ok=false; falta.push('Hora de cita'); markInvalid(h, true); } else { markInvalid(h, false); }
+
+    if(!ok){
+      alert('Completa los campos obligatorios:\n• ' + falta.join('\n• '));
+      return;
+    }
+
+    // Si la lógica original espera duración en SEGUNDOS, convertir (min -> seg) sin alterar el valor visible
+    var d = document.getElementById('callDuracion');
+    var old = null;
+    if(d){
+      old = d.value;
+      var mins = Number(d.value || 0);
+      if(!isNaN(mins)) d.value = String(Math.round(mins * 60));
+    }
+    try { if(_save) return _save(); }
+    finally { if(d && old!=null) d.value = old; }
+  };
+
+  // Al cargar (por si el modal ya está montado en DOM)
   document.addEventListener('DOMContentLoaded', function(){
     try{ setSemanaOptionsDefault(); }catch(_){}
   });
