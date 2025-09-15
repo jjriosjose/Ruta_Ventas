@@ -4600,5 +4600,58 @@ document.getElementById('rsTabReal').onclick = (e)=>{ e.target.classList.add('ac
 })();
 </script>
 
+
+<script>
+// === GW PATCH: Vendedor/Gestor como listas desplegables funcionales en Reporte ===
+(function(){
+  function uniq(a){ return Array.from(new Set(a.filter(Boolean).map(s=> String(s).trim()))); }
+  function buildSelectFromInput(id){
+    const el = document.getElementById(id);
+    if(!el) return null;
+    let sel;
+    if(el.tagName.toLowerCase()==='select'){ sel = el; sel.innerHTML = ''; }
+    else{
+      sel = document.createElement('select');
+      sel.id = id;
+      sel.className = el.className || '';
+      el.parentElement.replaceChild(sel, el);
+    }
+    const opt = document.createElement('option');
+    opt.value = ''; opt.textContent = '(todos)';
+    sel.appendChild(opt);
+    return sel;
+  }
+  function ensureRepDropdowns(){
+    try{
+      const all = (window.loadAllCallRecords ? window.loadAllCallRecords() : []);
+      const vendList = uniq(all.map(r=> r.vendedor)).sort((a,b)=> a.localeCompare(b,'es',{sensitivity:'base'}));
+      const gestList = uniq(all.map(r=> r.gestor_servicio)).sort((a,b)=> a.localeCompare(b,'es',{sensitivity:'base'}));
+
+      const sVend = buildSelectFromInput('repVendedor');
+      const sGest = buildSelectFromInput('repGestor');
+
+      if(sVend && !sVend.__filled){
+        vendList.forEach(v=>{ const o=document.createElement('option'); o.value=v; o.textContent=v; sVend.appendChild(o); });
+        sVend.__filled = true;
+      }
+      if(sGest && !sGest.__filled){
+        gestList.forEach(g=>{ const o=document.createElement('option'); o.value=g; o.textContent=g; sGest.appendChild(o); });
+        sGest.__filled = true;
+      }
+
+      [sVend,sGest].forEach(el=> el && !el.__bound && (el.__bound=true, el.addEventListener('change', ()=>{
+        try{ window.renderReporte && window.renderReporte(); }catch(e){}
+      })));
+
+    }catch(e){ console.error('rep dropdowns', e); }
+  }
+
+  // Llamar al abrir el reporte y al cargar la página
+  document.addEventListener('DOMContentLoaded', ensureRepDropdowns);
+  const _openReporte = window.openReporte;
+  window.openReporte = function(){ try{ ensureRepDropdowns(); }catch(_){ } if(_openReporte) return _openReporte(); };
+})();
+</script>
+
 </body>
 </html>
