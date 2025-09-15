@@ -4786,5 +4786,76 @@ document.getElementById('rsTabReal').onclick = (e)=>{ e.target.classList.add('ac
 })();
 </script>
 
+
+<script>
+// === GW PATCH v4: Poblar selects dentro de renderReporte (calendario primero, fallback llamadas) ===
+(function(){
+  function uniq(a){ return Array.from(new Set(a.filter(Boolean).map(s=> String(s).trim()))); }
+  function norm(s){ return String(s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim(); }
+
+  function ensureSelect(id){
+    const el = document.getElementById(id);
+    if(!el) return null;
+    if(el.tagName.toLowerCase()==='select') return el;
+    const sel = document.createElement('select');
+    sel.id = id;
+    sel.className = el.className || '';
+    el.parentElement.replaceChild(sel, el);
+    return sel;
+  }
+  function resetAndFill(id, values){
+    const sel = ensureSelect(id);
+    if(!sel) return;
+    const cur = sel.value;
+    sel.innerHTML = '';
+    const o0 = document.createElement('option'); o0.value=''; o0.textContent='(todos)'; sel.appendChild(o0);
+    values.forEach(v=>{ const o=document.createElement('option'); o.value=v; o.textContent=v; sel.appendChild(o); });
+    // restaurar si aún existe
+    if(values.includes(cur)) sel.value = cur;
+  }
+  function getValuesCalendario(){
+    const joined = (window.STATE && Array.isArray(STATE.joined)) ? STATE.joined : [];
+    const vend = uniq(joined.map(x=> x.vendedor).filter(v=> v && norm(v)!=='por asignar')).sort((a,b)=> a.localeCompare(b,'es',{sensitivity:'base'}));
+    const gest = uniq(joined.map(x=> x.gestor).filter(g=> g && norm(g)!=='por asignar')).sort((a,b)=> a.localeCompare(b,'es',{sensitivity:'base'}));
+    return {vend, gest};
+  }
+  function getValuesLlamadas(){
+    try{
+      const all = (typeof window.loadAllCallRecords==='function') ? loadAllCallRecords() : [];
+      const vend = uniq(all.map(r=> r.vendedor)).sort((a,b)=> a.localeCompare(b,'es',{sensitivity:'base'}));
+      const gest = uniq(all.map(r=> r.gestor_servicio || r.gestor)).sort((a,b)=> a.localeCompare(b,'es',{sensitivity:'base'}));
+      return {vend, gest};
+    }catch(_){ return {vend:[], gest:[]}; }
+  }
+  function fillFromSources(){
+    let {vend, gest} = getValuesCalendario();
+    if(vend.length===0 || gest.length===0){
+      const fb = getValuesLlamadas();
+      if(vend.length===0) vend = fb.vend;
+      if(gest.length===0) gest = fb.gest;
+    }
+    resetAndFill('repVendedor', vend);
+    resetAndFill('repGestor', gest);
+    ['repVendedor','repGestor'].forEach(id=>{
+      const el = document.getElementById(id);
+      if(el && !el.__bound){
+        el.__bound = true;
+        el.addEventListener('change', ()=> { try{ window.renderReporte && window.renderReporte(); }catch(_){} });
+      }
+    });
+  }
+
+  const _renderReporte = window.renderReporte;
+  window.renderReporte = function(){
+    fillFromSources();           // poblar selects antes de filtrar
+    if(_renderReporte) _renderReporte();
+    // por si se abre sin STATE listo, intenta de nuevo tras un pequeño delay
+    if(!window.STATE || !STATE.joined || STATE.joined.length===0){
+      setTimeout(fillFromSources, 500);
+    }
+  };
+})();
+</script>
+
 </body>
 </html>
