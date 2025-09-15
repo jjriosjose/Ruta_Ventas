@@ -1,559 +1,329 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Gestión de Llamadas — v7.6.0 (Login Usuarios + Integrado)</title>
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
-  <style>
-    :root{--bg:#f6f7fb;--card:#fff;--border:#e6e8ee;--text:#0f172a;--muted:#64748b;--accent:#0ea5e9;--warn:#ef4444;--ok:#10b981}
-    *{box-sizing:border-box}
-    body{margin:0;font-family:Inter,system-ui,Arial,sans-serif;background:var(--bg);color:var(--text)}
-    header{position:sticky;top:0;background:#fff;border-bottom:1px solid var(--border);z-index:10}
-    .wrap{max-width:1240px;margin:auto;padding:12px}
-    h1{margin:0;font-size:22px}
-    .row{display:flex;gap:10px;flex-wrap:wrap}
-    .toolbar{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
-    .chip{border:1px solid var(--border);border-radius:999px;padding:6px 10px;background:#fff;font-size:12px}
-    .btn{border:1px solid var(--border);padding:9px 12px;border-radius:10px;background:#fff;cursor:pointer}
-    .btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
-    .btn.warn{background:#ef4444;border-color:#ef4444;color:#fff}
-    .btn.small{padding:6px 10px;border-radius:8px}
-    .card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:12px;box-shadow:0 6px 18px rgba(15,23,42,.04)}
-    label{font-size:12px;font-weight:800;color:#111}
-    input,select{width:100%;padding:10px;border:1px solid var(--border);border-radius:10px;background:#fff}
-    table{width:100%;border-collapse:collapse}
-    th,td{padding:8px;border-bottom:1px solid var(--border);font-size:13px;text-align:left}
-    thead th{font-size:12px;font-weight:800}
-    #map{height:380px;border-radius:12px;overflow:hidden}
-    dialog{border:none;border-radius:16px;max-width:980px;width:92%}
-    .legend{position:absolute;right:12px;bottom:12px;background:#fff;border:1px solid var(--border);border-radius:10px;padding:8px 10px;box-shadow:0 6px 18px rgba(15,23,42,.08);min-width:140px}
-    .legend h4{margin:0 0 6px 0;font-size:12px}
-    .legend .item{display:flex;align-items:center;gap:6px;margin:3px 0;font-size:12px}
-    .dot{width:10px;height:10px;border-radius:50%}
-    .errorbar{position:fixed;left:0;right:0;bottom:0;background:#fee2e2;color:#991b1b;border-top:1px solid #fecaca;padding:8px 12px;font-size:12px;display:none}
-    #loginView{min-height:70vh;display:flex;align-items:center;justify-content:center}
-    #appView{display:none}
-  </style>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Gestión de Llamadas — v7.6.4</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#f6f7fb;--card:#fff;--border:#e6e8ee;--text:#0f172a;--muted:#64748b;--accent:#0ea5e9;--warn:#ef4444}
+*{box-sizing:border-box}
+body{margin:0;font-family:Inter,system-ui,Arial,sans-serif;background:var(--bg);color:var(--text)}
+header{position:sticky;top:0;background:#fff;border-bottom:1px solid var(--border);z-index:10}
+.wrap{max-width:1240px;margin:auto;padding:12px}
+h1{margin:0;font-size:22px}
+.row{display:flex;gap:10px;flex-wrap:wrap}
+.toolbar{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.chip{border:1px solid var(--border);border-radius:999px;padding:6px 10px;background:#fff;font-size:12px}
+.btn{border:1px solid var(--border);padding:9px 12px;border-radius:10px;background:#fff;cursor:pointer}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+.btn.warn{background:#ef4444;border-color:#ef4444;color:#fff}
+.btn.small{padding:6px 10px;border-radius:8px}
+.card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:12px;box-shadow:0 6px 18px rgba(15,23,42,.04)}
+label{font-size:12px;font-weight:800;color:#111}
+input,select,textarea{width:100%;padding:10px;border:1px solid var(--border);border-radius:10px;background:#fff}
+table{width:100%;border-collapse:collapse}
+th,td{padding:8px;border-bottom:1px solid var(--border);font-size:13px;text-align:left}
+thead th{font-size:12px;font-weight:800}
+#map{height:380px;border-radius:12px;overflow:hidden}
+dialog{border:none;border-radius:16px;max-width:980px;width:92%}
+.legend{position:absolute;right:12px;bottom:12px;background:#fff;border:1px solid var(--border);border-radius:10px;padding:8px 10px;box-shadow:0 6px 18px rgba(15,23,42,.08);min-width:140px}
+.legend h4{margin:0 0 6px 0;font-size:12px}
+.legend .item{display:flex;align-items:center;gap:6px;margin:3px 0;font-size:12px}
+.dot{width:10px;height:10px;border-radius:50%}
+#errorbar{position:fixed;left:0;right:0;bottom:0;background:#fee2e2;color:#991b1b;border-top:1px solid #fecaca;padding:8px 12px;font-size:12px;display:none;z-index:50}
+#loginView{min-height:70vh;display:flex;align-items:center;justify-content:center}
+#appView{display:none}
+tr.clickable{cursor:pointer}
+.help{font-size:12px;color:var(--muted)}
+.kv{font-size:11px;color:#334155;background:#f1f5f9;border:1px solid #e2e8f0;border-radius:8px;padding:6px 8px}
+.badgeBuild{position:fixed;right:10px;bottom:10px;background:#111;color:#fff;padding:6px 10px;border-radius:10px;font-size:11px;opacity:.85}
+</style>
 </head>
 <body>
-  <header>
-    <div class="wrap">
-      <div class="row" style="align-items:center;justify-content:space-between">
-        <div class="row" style="align-items:center;gap:12px">
-          <div style="width:40px;height:40px;border-radius:8px;background:#fff url('https://dummyimage.com/64x64/0ea5e9/ffffff&text=GW') center/cover no-repeat;border:1px solid var(--border)"></div>
-          <h1>Gestión de Llamadas</h1>
-          <span class="chip">LLAMADAS v7.6.0</span>
-          <span class="chip" id="chipUser" style="display:none">Usuario: -</span>
-        </div>
-        <div class="toolbar" id="topBar" style="display:none">
-          <button class="btn small" id="btnAgenda">📅 Agenda</button>
-          <button class="btn small" id="btnRegistrar">📝 Registrar llamada</button>
-          <button class="btn small" id="btnReporte">📊 Reporte</button>
-          <button class="btn small" id="btnReporteRes">📈 Reporte (Resumen)</button>
-          <button class="btn small" id="btnVerFicha">👁️ Ver ficha</button>
-          <button class="btn small" id="btnNuevoCliente">➕ Nuevo cliente</button>
-          <button class="btn small" id="btnExportCSV">⇩ Exportar CSV</button>
-          <button class="btn small" id="btnExportXLSX">⇩ Exportar Excel</button>
-          <button class="btn small warn" id="btnRestaurar">⟲ Restaurar</button>
-          <button class="btn small" id="btnConfig">⚙️ Configurar</button>
-          <button class="btn small" id="btnLogout">⎋ Salir</button>
-        </div>
+<header>
+  <div class="wrap">
+    <div class="row" style="align-items:center;justify-content:space-between">
+      <div class="row" style="align-items:center;gap:12px">
+        <div style="width:40px;height:40px;border-radius:8px;background:#fff url('https://dummyimage.com/64x64/0ea5e9/ffffff&text=GW') center/cover no-repeat;border:1px solid var(--border)"></div>
+        <h1>Gestión de Llamadas</h1>
+        <span class="chip">LLAMADAS v7.6.4</span>
+        <span class="chip" id="chipUser" style="display:none">Usuario: -</span>
       </div>
-    </div>
-  </header>
-
-  <!-- LOGIN VIEW -->
-  <div id="loginView" class="wrap">
-    <div class="card" style="max-width:460px;width:100%">
-      <h3 style="margin-top:0">Iniciar sesión</h3>
-      <div class="row">
-        <div style="flex:1">
-          <label>Usuario</label>
-          <input id="lgUser" placeholder="ej: jorge" autocomplete="username">
-        </div>
-      </div>
-      <div class="row" style="margin-top:8px">
-        <div style="flex:1">
-          <label>Contraseña</label>
-          <input id="lgPass" type="password" placeholder="••••••••" autocomplete="current-password">
-        </div>
-      </div>
-      <div class="row" style="margin-top:8px">
-        <div style="flex:1">
-          <label>Rol (opcional)</label>
-          <select id="lgRol">
-            <option value="">(No especificado)</option>
-            <option value="vendedor">Vendedor</option>
-            <option value="gestor">Gestor</option>
-            <option value="adm">Administrador</option>
-          </select>
-        </div>
-      </div>
-      <div class="row" style="justify-content:flex-end;margin-top:12px;gap:8px">
-        <button class="btn" id="btnLoginDemo">Demo</button>
-        <button class="btn primary" id="btnLogin">Entrar</button>
-      </div>
-      <div style="font-size:12px;color:var(--muted);margin-top:6px">
-        *Valida contra tu hoja de <b>Usuarios</b>. El botón Demo solo funciona si la URL de usuarios está vacía.
+      <div class="toolbar" id="topBar" style="display:none">
+        <button class="btn small" id="btnAgenda">📅 Agenda</button>
+        <button class="btn small" id="btnRegistrar">📝 Registrar llamada</button>
+        <button class="btn small" id="btnReporte">📊 Reporte</button>
+        <button class="btn small" id="btnReporteRes">📈 Reporte (Resumen)</button>
+        <button class="btn small" id="btnVerFicha">👁️ Ver ficha</button>
+        <button class="btn small" id="btnNuevoCliente">➕ Nuevo cliente</button>
+        <button class="btn small" id="btnExportCSV">⇩ Exportar CSV</button>
+        <button class="btn small" id="btnExportXLSX">⇩ Exportar Excel</button>
+        <button class="btn small warn" id="btnRestaurar">⟲ Restaurar</button>
+        <button class="btn small" id="btnConfig">⚙️ Configurar</button>
+        <button class="btn small" id="btnLogout">⎋ Salir</button>
       </div>
     </div>
   </div>
+</header>
 
-  <!-- APP VIEW -->
-  <main id="appView" class="wrap">
-    <section class="card">
-      <div class="toolbar">
-        <button class="btn small" id="btnFiltros">▦ Filtros</button>
-        <button class="btn small" id="btnLegend">🔎 Mostrar leyenda</button>
-        <span class="chip" id="statClientes">Clientes: 0</span>
-        <span class="chip" id="statCoord">Con coordenadas: 0</span>
-        <span class="chip" id="statFiltrados">Filtrados: 0</span>
+<!-- LOGIN VIEW -->
+<div id="loginView" class="wrap">
+  <div class="card" style="max-width:520px;width:100%">
+    <h3 style="margin-top:0">Iniciar sesión</h3>
+    <div class="row">
+      <div style="flex:1"><label>Usuario</label><input id="lgUser" autocomplete="username"></div>
+    </div>
+    <div class="row" style="margin-top:8px">
+      <div style="flex:1"><label>Contraseña</label><input id="lgPass" type="password" autocomplete="current-password"></div>
+    </div>
+    <div class="row" style="margin-top:8px">
+      <div class="help kv" style="flex:1">
+        <div><b>Usuarios CSV</b>: <span id="uUrl"></span></div>
       </div>
+    </div>
+    <div class="row" style="justify-content:flex-end;margin-top:12px;gap:8px">
+      <button class="btn" id="btnProbe">Probar Usuarios</button>
+      <button class="btn" id="btnLoginDemo">Demo</button>
+      <button class="btn primary" id="btnLogin">Entrar</button>
+    </div>
+    <div class="help" style="margin-top:6px">
+      *Valida contra la hoja <b>Usuarios</b> publicada. Usa <code>?logout=1</code> para limpiar sesión guardada.
+    </div>
+    <div id="probeOut" class="help" style="margin-top:8px"></div>
+  </div>
+</div>
 
-      <div id="filtros" class="row" style="margin-top:10px">
-        <div style="flex:1">
-          <label>Semana</label>
-          <select id="fSemana">
-            <option value="">Todas</option>
-            <option>1</option><option>2</option><option>3</option><option>4</option>
-          </select>
-        </div>
-        <div style="flex:1">
-          <label>Día</label>
-          <select id="fDia">
-            <option value="">Todos</option>
-            <option>Lunes</option><option>Martes</option><option>Miércoles</option><option>Jueves</option><option>Viernes</option><option>Sábado</option>
-          </select>
-        </div>
-        <div style="flex:1">
-          <label>Vendedor</label>
-          <select id="fVendedor"><option value="">Todos</option></select>
-        </div>
-        <div style="flex:1">
-          <label>Gestor</label>
-          <select id="fGestor"><option value="">Todos</option></select>
-        </div>
-        <div style="flex:1">
-          <label>Empresa</label>
-          <select id="fEmpresa"><option value="">Todas</option></select>
-        </div>
-        <div style="flex:1">
-          <label>Buscar</label>
-          <input id="fBuscar" placeholder="Nombre o código...">
-        </div>
-        <div style="flex:1">
-          <label>Cliente</label>
-          <select id="fCliente"><option value="">-- Seleccione --</option></select>
-        </div>
+<!-- APP VIEW -->
+<main id="appView" class="wrap">
+  <section class="card">
+    <div class="toolbar">
+      <button class="btn small" id="btnFiltros">▦ Filtros</button>
+      <button class="btn small" id="btnLegend">🔎 Mostrar leyenda</button>
+      <span class="chip" id="statClientes">Clientes: 0</span>
+      <span class="chip" id="statCoord">Con coordenadas: 0</span>
+      <span class="chip" id="statFiltrados">Filtrados: 0</span>
+    </div>
+
+    <!-- Filtros -->
+    <div id="filtros" class="row" style="margin-top:10px">
+      <div style="flex:1"><label>Semana</label>
+        <select id="fSemana"><option value="">Todas</option><option>1</option><option>2</option><option>3</option><option>4</option></select>
       </div>
+      <div style="flex:1"><label>Día</label>
+        <select id="fDia"><option value="">Todos</option><option>Lunes</option><option>Martes</option><option>Miércoles</option><option>Jueves</option><option>Viernes</option><option>Sábado</option></select>
+      </div>
+      <div style="flex:1"><label>Vendedor</label><select id="fVendedor"><option value="">Todos</option></select></div>
+      <div style="flex:1"><label>Gestor</label><select id="fGestor"><option value="">Todos</option></select></div>
+      <div style="flex:1"><label>Empresa</label><select id="fEmpresa"><option value="">Todas</option></select></div>
+      <div style="flex:1"><label>Buscar</label><input id="fBuscar" placeholder="Nombre o código..."></div>
+      <div style="flex:1"><label>Cliente</label><select id="fCliente"><option value="">-- Seleccione --</option></select></div>
+    </div>
 
-      <div class="row" style="margin-top:12px; position:relative">
-        <div class="card" style="flex:1;min-width:380px; position:relative">
-          <div id="map"></"></div>
-          <div id="legend" class="legend" style="display:none">
-            <h4>Vendedores</h4>
-            <div id="legendItems"></div>
-          </div>
-        </div>
-        <div class="card" style="flex:1;min-width:340px">
-          <h3 style="margin:0 0 8px 0">Clientes filtrados</h3>
-          <table id="tblClientes">
-            <thead><tr><th>Cod</th><th>Cliente</th><th>Semana</th><th>Día</th><th>Vendedor</th><th>Gestor</th><th>Empresa</th></tr></thead>
-            <tbody></tbody>
-          </table>
+    <div class="row" style="margin-top:12px; position:relative">
+      <div class="card" style="flex:1;min-width:380px; position:relative">
+        <div id="map"></div>
+        <div id="legend" class="legend" style="display:none">
+          <h4>Vendedores</h4><div id="legendItems"></div>
         </div>
       </div>
-    </section>
-  </main>
+      <div class="card" style="flex:1;min-width:360px">
+        <h3 style="margin:0 0 8px 0">Clientes filtrados</h3>
+        <table id="tblClientes">
+          <thead><tr><th>Cod</th><th>Cliente</th><th>Semana</th><th>Día</th><th>Vendedor</th><th>Gestor</th><th>Empresa</th></tr></thead>
+          <tbody></tbody>
+        </table>
+        <div class="help" style="margin-top:6px">*Clic en una fila para abrir <b>Registrar llamada</b> prellenado.</div>
+      </div>
+    </div>
+  </section>
+</main>
 
-  <!-- MODALES (Registrar, Reporte, KPI, Config) igual que versión anterior, omitidos por brevedad -->
-  <dialog id="dlgReg"><form method="dialog"><div class="card" style="box-shadow:none;border:none">
-    <h3 style="margin-top:0">Registrar llamada</h3>
-    <div class="row"><div style="flex:2"><label>Cliente *</label><input id="mCliente" required></div>
-    <div style="flex:1"><label>Cod Empresa</label><input id="mCod"></div></div>
-    <div class="row" style="margin-top:8px"><div style="flex:1"><label>Vendedor *</label><input id="mVendedor" required></div>
-    <div style="flex:1"><label>Gestor *</label><input id="mGestor" required></div></div>
-    <div class="row" style="margin-top:8px"><div style="flex:1"><label>Fecha y hora *</label><input id="mFechaHora" type="datetime-local" required></div>
-    <div style="flex:1"><label>N° Semana *</label><select id="mSemana" required><option value="">(Seleccione...)</option><option>1</option><option>2</option><option>3</option><option>4</option></select></div></div>
-    <div class="row" style="margin-top:8px"><div style="flex:1"><label>Resultado *</label><select id="mResultado"><option>Exitosa con Cita</option><option>Exitosa con Venta</option><option>Seguimiento recepción de pedido</option><option>No Contesta</option><option>No Compró</option><option>Captación de Cliente</option></select></div>
-    <div style="flex:1"><label>Duración (seg.)</label><input id="mDuracion" type="number" min="0" value="0"></div></div>
-    <div class="row" style="margin-top:8px"><div style="flex:1"><label>Observaciones</label><input id="mObs"></div></div>
-    <div class="row" style="margin-top:10px;justify-content:flex-end;gap:8px"><button id="btnCancel" class="btn">Cancelar</button><button id="btnSave" class="btn primary">Guardar</button></div>
-  </div></form></dialog>
+<!-- AGENDA -->
+<dialog id="dlgAgenda"><div class="card" style="box-shadow:none;border:none">
+  <h3 style="margin-top:0">Agenda</h3>
+  <div class="row" style="gap:8px">
+    <span class="chip">Semana: <b id="agSem">-</b></span>
+    <span class="chip">Día: <b id="agDia">-</b></span>
+    <span class="chip">Gestor: <b id="agGes">-</b></span>
+    <span class="chip">Vendedor: <b id="agVen">-</b></span>
+  </div>
+  <div style="margin-top:10px;max-height:60vh;overflow:auto">
+    <table id="agTbl"><thead><tr><th>Cliente</th><th>Vendedor</th><th>Gestor</th><th>Empresa</th><th>Semana</th><th>Día</th><th></th></tr></thead><tbody></tbody></table>
+  </div>
+  <div class="row" style="justify-content:flex-end;gap:8px;margin-top:8px"><button id="btnCerrarAgenda" class="btn small">Cerrar</button></div>
+</div></dialog>
 
-  <dialog id="dlgRep"><div class="card" style="box-shadow:none;border:none"><h3 style="margin-top:0">Reporte — Detalle</h3>
-    <div class="row" style="justify-content:flex-end;gap:8px"><button id="btnExportCSVDet" class="btn small">⇩ Exportar CSV</button><button id="btnExportXLSXDet" class="btn small">⇩ Exportar Excel</button><button id="btnCerrarRep" class="btn small">Cerrar</button></div>
-    <div style="margin-top:10px;overflow:auto;max-height:60vh"><table id="repTbl"><thead><tr><th>Fecha/Hora</th><th>Cliente</th><th>Cod</th><th>Vendedor</th><th>Gestor</th><th>N Semana</th><th>Resultado</th><th>Duración</th><th>Obs</th></tr></thead><tbody></tbody></table></div>
-  </div></dialog>
+<!-- REGISTRAR -->
+<dialog id="dlgReg"><form method="dialog"><div class="card" style="box-shadow:none;border:none">
+  <h3 style="margin-top:0">Registrar llamada</h3>
+  <div class="row">
+    <div style="flex:2"><label>Cliente *</label><input id="mCliente" required></div>
+    <div style="flex:1"><label>Cod Empresa</label><input id="mCod"></div>
+  </div>
+  <div class="row" style="margin-top:8px">
+    <div style="flex:1"><label>Empresa</label><input id="mEmpresa"></div>
+    <div style="flex:1"><label>Vendedor *</label><input id="mVendedor" required></div>
+    <div style="flex:1"><label>Gestor *</label><input id="mGestor" required></div>
+  </div>
+  <div class="row" style="margin-top:8px">
+    <div style="flex:1"><label>Contacto</label><input id="mContacto"></div>
+    <div style="flex:1"><label>Teléfono</label><input id="mTelefono"></div>
+    <div style="flex:1"><label>Medio</label><select id="mMedio"><option>Llamada</option><option>WhatsApp</option><option>Visita</option><option>Correo</option></select></div>
+  </div>
+  <div class="row" style="margin-top:8px">
+    <div style="flex:1"><label>Fecha y hora *</label><input id="mFechaHora" type="datetime-local" required></div>
+    <div style="flex:1"><label>N° Semana *</label><select id="mSemana" required><option value="">(Seleccione...)</option><option>1</option><option>2</option><option>3</option><option>4</option></select></div>
+    <div style="flex:1"><label>Día (auto)</label><input id="mDia" readonly></div>
+  </div>
+  <div class="row" style="margin-top:8px">
+    <div style="flex:1"><label>Lat</label><input id="mLat"></div>
+    <div style="flex:1"><label>Lon</label><input id="mLon"></div>
+    <div style="flex:1"><label>Resultado *</label><select id="mResultado" required>
+      <option>Exitosa con Cita</option><option>Exitosa con Venta</option><option>Seguimiento recepción de pedido</option><option>No Contesta</option><option>No Compró</option><option>Captación de Cliente</option></select></div>
+  </div>
+  <div class="row" style="margin-top:8px">
+    <div style="flex:1"><label>Observaciones</label><textarea id="mObs" rows="2" placeholder="Notas de la llamada..."></textarea></div>
+  </div>
+  <div class="row" style="margin-top:10px;justify-content:flex-end;gap:8px">
+    <button id="btnCancel" class="btn">Cancelar</button>
+    <button id="btnSave" class="btn primary">Guardar</button>
+  </div>
+</div></form></dialog>
 
-  <dialog id="dlgKPI"><div class="card" style="box-shadow:none;border:none"><h3 style="margin-top:0">Reporte — Resumen (KPI)</h3>
-    <div class="row" style="gap:8px"><div class="card" style="flex:1"><div style="font-size:12px;color:var(--muted)">Esperadas</div><div id="kpiEsperadas" style="font-size:28px;font-weight:800">0</div></div>
-    <div class="card" style="flex:1"><div style="font-size:12px;color:var(--muted)">Realizadas</div><div id="kpiRealizadas" style="font-size:28px;font-weight:800">0</div></div>
-    <div class="card" style="flex:1"><div style="font-size:12px;color:var(--muted)">% Cumplimiento</div><div id="kpiPct" style="font-size:28px;font-weight:800">0%</div></div></div>
-    <div style="margin-top:10px;overflow:auto;max-height:55vh"><table id="kpiTbl"><thead><tr><th>Semana</th><th>Esperadas</th><th>Realizadas</th><th>%</th></tr></thead><tbody></tbody></table></div>
-    <div class="row" style="justify-content:flex-end;gap:8px;margin-top:8px"><button id="btnCerrarKPI" class="btn small">Cerrar</button></div>
-  </div></dialog>
+<!-- REPORTE DETALLE -->
+<dialog id="dlgRep"><div class="card" style="box-shadow:none;border:none">
+  <h3 style="margin-top:0">Reporte — Detalle</h3>
+  <div class="row" style="justify-content:flex-end;gap:8px">
+    <button id="btnExportCSVDet" class="btn small">⇩ Exportar CSV</button>
+    <button id="btnExportXLSXDet" class="btn small">⇩ Exportar Excel</button>
+    <button id="btnCerrarRep" class="btn small">Cerrar</button>
+  </div>
+  <div style="margin-top:10px;overflow:auto;max-height:60vh">
+    <table id="repTbl"><thead><tr>
+      <th>Fecha/Hora</th><th>Cliente</th><th>Cod</th><th>Empresa</th><th>Vendedor</th><th>Gestor</th>
+      <th>N Semana</th><th>Día</th><th>Medio</th><th>Resultado</th><th>Duración</th><th>Obs</th><th>Lat</th><th>Lon</th>
+    </tr></thead><tbody></tbody></table>
+  </div>
+</div></dialog>
 
-  <dialog id="dlgCfg"><form method="dialog"><div class="card" style="box-shadow:none;border:none"><h3 style="margin-top:0">Configuración de fuentes</h3>
-    <div class="row"><div style="flex:1"><label>URL CSV — Usuarios</label><input id="cfgUsuarios" placeholder="https://...&output=csv"></div></div>
-    <div class="row" style="margin-top:8px"><div style="flex:1"><label>URL CSV — Clientes</label><input id="cfgClientes" placeholder="https://...&output=csv"></div></div>
-    <div class="row" style="margin-top:8px"><div style="flex:1"><label>URL CSV — Calendario (plan)</label><input id="cfgCalendario" placeholder="https://...&output=csv"></div></div>
-    <div class="row" style="margin-top:8px"><div style="flex:1"><label>URL Form — Nuevo cliente (opcional)</label><input id="cfgForm" placeholder="https://forms.google.com/..."></div></div>
-    <div class="row" style="margin-top:10px;justify-content:flex-end;gap:8px"><button id="btnCancelCfg" class="btn">Cancelar</button><button id="btnSaveCfg" class="btn primary">Guardar</button></div>
-  </div></form></dialog>
+<!-- RESUMEN KPI -->
+<dialog id="dlgKPI"><div class="card" style="box-shadow:none;border:none">
+  <h3 style="margin-top:0">Reporte — Resumen (KPI)</h3>
+  <div class="row" style="gap:8px">
+    <div class="card" style="flex:1"><div class="help">Esperadas</div><div id="kpiEsperadas" style="font-size:28px;font-weight:800">0</div></div>
+    <div class="card" style="flex:1"><div class="help">Realizadas</div><div id="kpiRealizadas" style="font-size:28px;font-weight:800">0</div></div>
+    <div class="card" style="flex:1"><div class="help">% Cumplimiento</div><div id="kpiPct" style="font-size:28px;font-weight:800">0%</div></div>
+  </div>
+  <div style="margin-top:10px;overflow:auto;max-height:55vh">
+    <table id="kpiTbl"><thead><tr><th>Semana</th><th>Esperadas</th><th>Realizadas</th><th>%</th></tr></thead><tbody></tbody></table>
+  </div>
+  <div class="row" style="justify-content:flex-end;gap:8px;margin-top:8px"><button id="btnCerrarKPI" class="btn small">Cerrar</button></div>
+</div></dialog>
 
-  <div id="errorbar" class="errorbar"></div>
+<!-- CONFIG -->
+<dialog id="dlgCfg"><form method="dialog"><div class="card" style="box-shadow:none;border:none">
+  <h3 style="margin-top:0">Configuración de fuentes</h3>
+  <div class="row"><div style="flex:1"><label>URL CSV — Usuarios</label><input id="cfgUsuarios"></div></div>
+  <div class="row" style="margin-top:8px"><div style="flex:1"><label>URL CSV — Clientes</label><input id="cfgClientes"></div></div>
+  <div class="row" style="margin-top:8px"><div style="flex:1"><label>URL CSV — Calendario (plan)</label><input id="cfgCalendario"></div></div>
+  <div class="row" style="margin-top:8px"><div style="flex:1"><label>URL Form — Nuevo cliente (opcional)</label><input id="cfgForm"></div></div>
+  <div class="row" style="margin-top:10px;justify-content:flex-end;gap:8px">
+    <button id="btnCancelCfg" class="btn">Cancelar</button>
+    <button id="btnSaveCfg" class="btn primary">Guardar</button>
+  </div>
+</div></form></dialog>
 
-  <script>
-    // ---------- CONFIG PERSISTENTE ----------
-    const DEFAULT_CFG = {
-      usuarios: 'https://docs.google.com/spreadsheets/d/e/2PACX-1vSGjr-XdLSamHpGQfoORmLfntJbLd-UbFpD7NdMM14x2JdMhxOYHTWQBlhYCMDu0ZTy3AYS-1Y3q91Y/pub?gid=1395226434&single=true&output=csv',
-      clientes: 'https://docs.google.com/spreadsheets/d/e/2PACX-1vSGjr-XdLSamHpGQfoORmLfntJbLd-UbFpD7NdMM14x2JdMhxOYHTWQBlhYCMDu0ZTy3AYS-1Y3q91Y/pub?gid=1016315198&single=true&output=csv',
-      calendario: 'https://docs.google.com/spreadsheets/d/e/2PACX-1vSGjr-XdLSamHpGQfoORmLfntJbLd-UbFpD7NdMM14x2JdMhxOYHTWQBlhYCMDu0ZTy3AYS-1Y3q91Y/pub?gid=223681507&single=true&output=csv',
-      formNuevoCliente: ''
-    };
-    const CFG_KEY = 'cfg_llamadas_app';
-    const AUTH_KEY = 'auth_llamadas_user';
-    const CALLS_KEY = 'calls_llamadas_app';
-    const STATE = { calls:[], clientes:[], calendario:[], usuarios:[], cfg:loadCfg(), user:null };
+<div id="errorbar"></div>
+<div class="badgeBuild">v7.6.4 • 2025-09-15 02:37 UTC</div>
 
-    function sanitizeCfg(c){
-      // Si en localStorage hay strings vacíos, usar default
-      if(!c.usuarios) c.usuarios = DEFAULT_CFG.usuarios;
-      if(!c.clientes) c.clientes = DEFAULT_CFG.clientes;
-      if(!c.calendario) c.calendario = DEFAULT_CFG.calendario;
-      return c;
-    }
-    function loadCfg(){
-      try{ const c = JSON.parse(localStorage.getItem(CFG_KEY)||'{}'); return sanitizeCfg(Object.assign({}, DEFAULT_CFG, c)); }catch(e){ return sanitizeCfg(Object.assign({}, DEFAULT_CFG)); }
-    }
-    function saveCfg(c){ localStorage.setItem(CFG_KEY, JSON.stringify(c)); }
+<script>
+const DEFAULT_CFG = { usuarios: "https://docs.google.com/spreadsheets/d/e/2PACX-1vSGjr-XdLSamHpGQfoORmLfntJbLd-UbFpD7NdMM14x2JdMhxOYHTWQBlhYCMDu0ZTy3AYS-1Y3q91Y/pub?gid=1395226434&single=true&output=csv", clientes: "https://docs.google.com/spreadsheets/d/e/2PACX-1vSGjr-XdLSamHpGQfoORmLfntJbLd-UbFpD7NdMM14x2JdMhxOYHTWQBlhYCMDu0ZTy3AYS-1Y3q91Y/pub?gid=1016315198&single=true&output=csv", calendario: "https://docs.google.com/spreadsheets/d/e/2PACX-1vSGjr-XdLSamHpGQfoORmLfntJbLd-UbFpD7NdMM14x2JdMhxOYHTWQBlhYCMDu0ZTy3AYS-1Y3q91Y/pub?gid=223681507&single=true&output=csv", formNuevoCliente: "" };
+const CFG_KEY = 'cfg_llamadas_app';
+const AUTH_KEY = 'auth_llamadas_user';
+const CALLS_KEY = 'calls_llamadas_app';
+const QS = new URLSearchParams(location.search);
+if (QS.get('logout') === '1') { try { localStorage.removeItem(AUTH_KEY); } catch(e){} }
 
-    // ---------- HELPERS ----------
-    const $ = s=>document.querySelector(s);
-    const $$ = s=>Array.from(document.querySelectorAll(s));
-    const csvToRows = (csv)=>csv.split(/\r?\n/).map(r=>r.split(',')).filter(r=>r.length>1 || (r.length===1 && r[0].trim()!==''));
-    const uniq = a=>Array.from(new Set(a.filter(Boolean)));
-    function fmt(dt){ if(!dt) return ''; const d = new Date(dt); if(isNaN(d)) return dt; const pad=n=>String(n).padStart(2,'0'); return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`; }
-    function showErr(msg){ const el=$('#errorbar'); el.textContent = msg; el.style.display='block'; setTimeout(()=>{ el.style.display='none'; }, 6000); }
+const STATE = { calls:[], clientes:[], calendario:[], usuarios:[], cfg:loadCfg(), user:null };
 
-    // ---------- QUERY FLAGS ----------
-    const QS = new URLSearchParams(location.search);
-    if(QS.get('logout')==='1') localStorage.removeItem(AUTH_KEY);
+const $ = s => document.querySelector(s);
+const $$ = s => Array.from(document.querySelectorAll(s));
+const uniq = a => Array.from(new Set(a.filter(Boolean)));
 
-    // ---------- LOGIN ----------
-    function applyAuthUI(){
-      const logged = !!STATE.user;
-      $('#loginView').style.display = logged? 'none':'block';
-      $('#appView').style.display = logged? 'block':'none';
-      $('#topBar').style.display = logged? 'flex':'none';
-      $('#chipUser').style.display = logged? 'inline-flex':'none';
-      $('#chipUser').textContent = 'Usuario: ' + (STATE.user? (STATE.user.user||'-'):'-');
-    }
-    function loadUser(){
-      try{ STATE.user = JSON.parse(localStorage.getItem(AUTH_KEY)||'null'); }catch(e){ STATE.user=null; }
-      applyAuthUI();
-    }
-    function saveUser(u){
-      STATE.user = u;
-      localStorage.setItem(AUTH_KEY, JSON.stringify(u));
-      applyAuthUI();
-    }
+function sanitizeCfg(c){ if(!c.usuarios) c.usuarios = DEFAULT_CFG.usuarios; if(!c.clientes) c.clientes = DEFAULT_CFG.clientes; if(!c.calendario) c.calendario = DEFAULT_CFG.calendario; return c; }
+function loadCfg(){ try{ const c = JSON.parse(localStorage.getItem(CFG_KEY)||'{}'); return sanitizeCfg(Object.assign({}, DEFAULT_CFG, c)); }catch(e){ return sanitizeCfg(Object.assign({}, DEFAULT_CFG)); } }
+function saveCfg(c){ localStorage.setItem(CFG_KEY, JSON.stringify(c)); }
+function showErr(msg){ const el=$('#errorbar'); el.textContent = msg; el.style.display='block'; setTimeout(()=>{ el.style.display='none'; }, 6000); }
+function fmt(dt){ if(!dt) return ''; const d=new Date(dt); if(isNaN(d)) return dt; const pad=n=>String(n).padStart(2,'0'); return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`; }
 
-    async function fetchCSV(url){
-      try{
-        const t = await fetch(url, {cache:'no-store'}).then(r=>r.text());
-        return t ? csvToRows(t) : [];
-      }catch(e){
-        showErr('No se pudo leer: '+url);
-        return [];
-      }
-    }
+function csvToAOA(csv){ try{ const wb = XLSX.read(csv, { type:'string' }); const ws = wb.Sheets[wb.SheetNames[0]]; const aoa = XLSX.utils.sheet_to_json(ws, { header:1, defval:'' }); return aoa; }catch(e){ console.error('XLSX parse error', e); return []; } }
+async function fetchCSV(url){ try{ const t = await fetch(url, {cache:'no-store'}).then(r=>r.text()); return t ? csvToAOA(t) : []; }catch(e){ showErr('No se pudo leer: '+url); return []; } }
 
-    function findColIx(hdr, names){
-      const norm = s=>String(s||'').trim().toLowerCase();
-      const H = hdr.map(norm);
-      for(const nm of names){
-        const ix = H.findIndex(h=> h===nm || h.includes(nm));
-        if(ix>-1) return ix;
-      }
-      return -1;
-    }
+function applyAuthUI(){ const logged = !!STATE.user; $('#loginView').style.display = logged? 'none':'block'; $('#appView').style.display = logged? 'block':'none'; $('#topBar').style.display = logged? 'flex':'none'; $('#chipUser').style.display = logged? 'inline-flex':'none'; $('#chipUser').textContent = 'Usuario: ' + (STATE.user? (STATE.user.user||'-'):'-'); }
+function loadUser(){ try{ STATE.user = JSON.parse(localStorage.getItem(AUTH_KEY)||'null'); }catch(e){ STATE.user=null; } applyAuthUI(); }
+function saveUser(u){ STATE.user = u; localStorage.setItem(AUTH_KEY, JSON.stringify(u)); applyAuthUI(); }
 
-    async function validateLogin(user, pass){
-      if(!STATE.usuarios.length) STATE.usuarios = await fetchCSV(STATE.cfg.usuarios);
-      if(!STATE.usuarios.length){ showErr('Usuarios: no se pudo cargar la hoja. Revisa Configurar → URL CSV.'); return null; }
-      const hdr = STATE.usuarios[0]||[];
-      const ixUser = findColIx(hdr, ['usuario','user','correo','email']);
-      const ixPass = findColIx(hdr, ['contraseña','contrasena','password','pass','clave']);
-      const ixRol  = findColIx(hdr, ['rol','role','perfil']);
-      const u = (user||'').trim().toLowerCase();
-      const p = (pass||'').trim();
-      const row = STATE.usuarios.slice(1).find(r=> String(r[ixUser]||'').trim().toLowerCase()===u );
-      if(!row) return null;
-      if(ixPass>-1){
-        const ok = String(row[ixPass]||'').trim()===p;
-        if(!ok) return null;
-      }
-      const rol = ixRol>-1 ? String(row[ixRol]||'').trim().toLowerCase() : '';
-      return { user, rol };
-    }
+function norm(s){ return String(s||'').trim().toLowerCase(); }
+function findColIx(hdr, names){ const H = hdr.map(x=>norm(x)); for(const nm of names){ const ix = H.findIndex(h=> h===nm || h.includes(nm)); if(ix>-1) return ix; } return -1; }
+async function validateLogin(user, pass){ if(!STATE.usuarios.length) STATE.usuarios = await fetchCSV(STATE.cfg.usuarios); if(!STATE.usuarios.length){ showErr('Usuarios: no se pudo cargar o está vacío.'); return null; } const hdr = STATE.usuarios[0]||[]; const ixUser = findColIx(hdr, ['usuario','user','correo','email']); const ixPass = findColIx(hdr, ['contraseña','contrasena','password','pass','clave']); const ixRol  = findColIx(hdr, ['rol','role','perfil']); if(ixUser<0){ showErr('Usuarios: no se encontró columna de usuario/correo.'); return null; } const u = norm(user); const row = STATE.usuarios.slice(1).find(r=> norm(r[ixUser])===u ); if(!row){ showErr('Usuario no encontrado.'); return null; } if(ixPass>-1){ if(String(row[ixPass]||'').trim() !== String(pass||'')){ showErr('Contraseña incorrecta.'); return null; } } const rol = ixRol>-1 ? String(row[ixRol]||'').trim().toLowerCase() : ''; return { user, rol }; }
 
-    async function revalidateSession(){
-      if(!STATE.user) return false;
-      const v = await validateLogin(STATE.user.user, STATE.user.pass||'');
-      if(!v){ localStorage.removeItem(AUTH_KEY); STATE.user=null; applyAuthUI(); showErr('Sesión inválida o expirada. Inicia sesión.'); return false; }
-      return true;
-    }
+let map, layer;
+function initMap(){ map = L.map('map').setView([18.7357,-70.1627],7); L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{attribution:'© OpenStreetMap'}).addTo(map); layer=L.layerGroup().addTo(map); }
+const PALETTE=['#0ea5e9','#10b981','#f59e0b','#ef4444','#8b5cf6','#22c55e','#14b8a6','#f97316','#a3e635','#e11d48','#0284c7'];
+const colorByVendor={}; function getColorForVendor(v){ if(!v) return '#0ea5e9'; if(!colorByVendor[v]){ const i=Object.keys(colorByVendor).length%PALETTE.length; colorByVendor[v]=PALETTE[i]; } return colorByVendor[v]; }
+function renderLegend(vendors){ $('#legendItems').innerHTML=vendors.map(v=>`<div class="item"><span class="dot" style="background:${getColorForVendor(v)}"></span><span>${v||'(Sin vendedor)'} </span></div>`).join(''); }
+function indices(){ const hdr=STATE.clientes[0]||[]; const lo = s=>String(s).toLowerCase(); return { hdr, idxNom: hdr.findIndex(h=>/cliente|nombre/i.test(String(h))), idxVend: hdr.findIndex(h=>/vendedor/i.test(String(h))), idxGes: hdr.findIndex(h=>/gestor/i.test(String(h))), idxEmp: hdr.findIndex(h=>/empresa/i.test(String(h))), idxCod: hdr.findIndex(h=>/cod/i.test(String(h))), idxSem: hdr.findIndex(h=>/n.?\s*semana|semana/i.test(String(h))), idxDia: hdr.findIndex(h=>/^dia$|^día$|dia|día/i.test(String(h))), idxTel: hdr.findIndex(h=>/tel/i.test(String(h))), idxCont: hdr.findIndex(h=>/contacto|persona/i.test(String(h))), idxLat: hdr.findIndex(h=>lo(h).includes('lat')), idxLon: hdr.findIndex(h=>/lon|long/i.test(lo(h))) }; }
+function applyFiltersClientes(rows){ const vend= $('#fVendedor').value.trim().toLowerCase(); const ges = $('#fGestor').value.trim().toLowerCase(); const emp = $('#fEmpresa').value.trim().toLowerCase(); const bus = $('#fBuscar').value.trim().toLowerCase(); const cli = $('#fCliente').value.trim().toLowerCase(); const sem = $('#fSemana').value.trim(); const dia = $('#fDia').value.trim().toLowerCase(); const I=indices(); return rows.slice(1).filter(r=>{ const nombre= String(r[I.idxNom]||'').toLowerCase(); const cod= String(r[I.idxCod]||'').toLowerCase(); const v=String(r[I.idxVend]||'').toLowerCase(); const g=String(r[I.idxGes]||'').toLowerCase(); const e=String(r[I.idxEmp]||'').toLowerCase(); const s=String(r[I.idxSem]||'').trim(); const d=String(r[I.idxDia]||'').toLowerCase(); if(vend && v!==vend) return false; if(ges && g!==ges) return false; if(emp && e!==emp) return false; if(sem && s!==sem) return false; if(dia && d!==dia) return false; if(cli && nombre!==cli) return false; if(bus && !(nombre.includes(bus)||cod.includes(bus))) return false; return true; }); }
+function fillCombos(){ const I=indices(); const vend=uniq(STATE.clientes.slice(1).map(r=>String(r[I.idxVend]||'').trim())).sort(); const gest=uniq(STATE.clientes.slice(1).map(r=>String(r[I.idxGes]||'').trim())).sort(); const emp =uniq(STATE.clientes.slice(1).map(r=>String(r[I.idxEmp]||'').trim())).sort(); $('#fVendedor').innerHTML='<option value="">Todos</option>'+vend.map(v=>`<option>${v}</option>`).join(''); $('#fGestor').innerHTML  ='<option value="">Todos</option>'+gest.map(v=>`<option>${v}</option>`).join(''); $('#fEmpresa').innerHTML ='<option value="">Todas</option>'+emp.map(v=>`<option>${v}</option>`).join(''); $('#fCliente').innerHTML ='<option value="">-- Seleccione --</option>'+STATE.clientes.slice(1).map(r=>`<option>${r[I.idxNom]||''}</option>`).join(''); }
+function renderMap(){ if(!map) return; layer.clearLayers(); const I=indices(); const filtered=applyFiltersClientes(STATE.clientes); const vendors=uniq(filtered.map(r=>r[I.idxVend]||'').map(s=>String(s).trim())).sort(); renderLegend(vendors); filtered.forEach(r=>{ const la=parseFloat(r[I.idxLat]); const lo=parseFloat(r[I.idxLon]); if(!isNaN(la) && !isNaN(lo)){ const name=r[I.idxNom]||'Cliente'; const vend=(r[I.idxVend]||'').trim(); const col=getColorForVendor(vend); L.circleMarker([la,lo],{radius:6,weight:2,color:col,fillColor:col,fillOpacity:.7}).addTo(layer).bindPopup(`<b>${name}</b><br>${vend}`); } }); }
+function renderClientesTabla(){ const I=indices(); const tbody=$('#tblClientes tbody'); const filtered=applyFiltersClientes(STATE.clientes); const total=Math.max(STATE.clientes.length-1,0); const withCoord=STATE.clientes.slice(1).filter(r=>!isNaN(parseFloat(r[I.idxLat]))&&!isNaN(parseFloat(r[I.idxLon]))).length; $('#statClientes').textContent='Clientes: '+total; $('#statCoord').textContent='Con coordenadas: '+withCoord; $('#statFiltrados').textContent='Filtrados: '+filtered.length; tbody.innerHTML=filtered.map((r,i)=>`<tr class="clickable" data-ix="${i}"><td>${r[I.idxCod]||''}</td><td>${r[I.idxNom]||''}</td><td>${r[I.idxSem]||''}</td><td>${r[I.idxDia]||''}</td><td>${r[I.idxVend]||''}</td><td>${r[I.idxGes]||''}</td><td>${r[I.idxEmp]||''}</td></tr>`).join(''); Array.from(tbody.querySelectorAll('tr.clickable')).forEach((tr,ix)=>{ tr.addEventListener('click', ()=>{ const row=filtered[ix]; openRegistrarFromRow(row); }); }); }
 
-    // ---------- MAPA ----------
-    let map, layer;
-    function initMap(){
-      map = L.map('map').setView([18.7357,-70.1627],7);
-      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{attribution:'© OpenStreetMap'}).addTo(map);
-      layer = L.layerGroup().addTo(map);
-    }
-    const PALETTE = ['#0ea5e9','#10b981','#f59e0b','#ef4444','#8b5cf6','#22c55e','#14b8a6','#f97316','#a3e635','#e11d48','#0284c7'];
-    const colorByVendor = {}
-    function getColorForVendor(v){ if(!v) return '#0ea5e9'; if(!colorByVendor[v]){ const idx=Object.keys(colorByVendor).length%PALETTE.length; colorByVendor[v]=PALETTE[idx]; } return colorByVendor[v]; }
-    function renderLegend(vendors){ $('#legendItems').innerHTML = vendors.map(v=>`<div class="item"><span class="dot" style="background:${getColorForVendor(v)}"></span><span>${v||'(Sin vendedor)'} </span></div>`).join(''); }
-    function renderMap(){
-      if(!map) return;
-      layer.clearLayers();
-      const hdr = STATE.clientes[0]||[];
-      const idxLat = hdr.findIndex(h=>String(h).toLowerCase().includes('lat'));
-      const idxLon = hdr.findIndex(h=>/lon|long/i.test(String(h).toLowerCase()));
-      const idxNom = hdr.findIndex(h=>/cliente|nombre/i.test(String(h)));
-      const idxVend= hdr.findIndex(h=>/vendedor/i.test(String(h)));
-      const filtered = applyFiltersClientes(STATE.clientes);
-      const vendors = uniq(filtered.map(r=>r[idxVend]||'').map(s=>s.trim())).sort();
-      renderLegend(vendors);
-      filtered.forEach(r=>{
-        const lat = parseFloat(r[idxLat]); const lon = parseFloat(r[idxLon]);
-        if(!isNaN(lat) && !isNaN(lon)){
-          const name = r[idxNom] || 'Cliente'; const vend = (r[idxVend]||'').trim(); const col = getColorForVendor(vend);
-          L.circleMarker([lat,lon],{radius:6,weight:2,color:col,fillColor:col,fillOpacity:.7}).addTo(layer).bindPopup(`<b>${name}</b><br>${vend}`);
-        }
-      });
-    }
+function renderAgenda(){ const I=indices(); const f=applyFiltersClientes(STATE.clientes); $('#agSem').textContent=$('#fSemana').value||'Todas'; $('#agDia').textContent=$('#fDia').value||'Todos'; $('#agGes').textContent=$('#fGestor').value||'Todos'; $('#agVen').textContent=$('#fVendedor').value||'Todos'; const tb=$('#agTbl tbody'); tb.innerHTML=f.map((r)=>`<tr><td>${r[I.idxNom]||''}</td><td>${r[I.idxVend]||''}</td><td>${r[I.idxGes]||''}</td><td>${r[I.idxEmp]||''}</td><td>${r[I.idxSem]||''}</td><td>${r[I.idxDia]||''}</td><td><button class='btn small'>Registrar</button></td></tr>`).join(''); Array.from(tb.querySelectorAll('button')).forEach((b,ix)=>{ b.addEventListener('click', ()=>{ openRegistrarFromRow(f[ix]); $('#dlgAgenda').close(); }); }); }
+function dayName(d){ return ['Domingo','Lunes','Martes','Miércoles','Jueves','Viernes','Sábado'][d.getDay()]; }
+function weekOfMonthFromDate(iso){ const d=new Date(iso); if(isNaN(d)) return ''; const first=new Date(d.getFullYear(), d.getMonth(), 1).getDay()||7; return String(Math.ceil((d.getDate()+first-1)/7)); }
+function openRegistrarFromRow(r){ const I=indices(); $('#mCliente').value=r[I.idxNom]||''; $('#mCod').value=r[I.idxCod]||''; $('#mEmpresa').value=r[I.idxEmp]||''; $('#mVendedor').value=r[I.idxVend]||''; $('#mGestor').value=r[I.idxGes]||''; $('#mSemana').value=(r[I.idxSem]||'').toString().trim(); $('#mDia').value=r[I.idxDia]||''; $('#mTelefono').value=r[I.idxTel]||''; $('#mContacto').value=r[I.idxCont]||''; $('#mLat').value=r[I.idxLat]||''; $('#mLon').value=r[I.idxLon]||''; $('#mResultado').value='Exitosa con Cita'; $('#mMedio').value='Llamada'; $('#mFechaHora').value=''; $('#dlgReg').showModal(); }
 
-    // ---------- COMBOS & FILTROS ----------
-    function fillCombos(){
-      const hdr = STATE.clientes[0]||[];
-      const idxVend= hdr.findIndex(h=>/vendedor/i.test(String(h)));
-      const idxGes = hdr.findIndex(h=>/gestor/i.test(String(h)));
-      const idxEmp = hdr.findIndex(h=>/empresa/i.test(String(h)));
-      const idxCli = hdr.findIndex(h=>/cliente|nombre/i.test(String(h)));
-      const vend = uniq(STATE.clientes.slice(1).map(r=>r[idxVend]||'').map(s=>s.trim())).sort();
-      const gest = uniq(STATE.clientes.slice(1).map(r=>r[idxGes]||'').map(s=>s.trim())).sort();
-      const emp  = uniq(STATE.clientes.slice(1).map(r=>r[idxEmp]||'').map(s=>s.trim())).sort();
-      $('#fVendedor').innerHTML = '<option value="">Todos</option>'+vend.map(v=>`<option>${v}</option>`).join('');
-      $('#fGestor').innerHTML   = '<option value="">Todos</option>'+gest.map(v=>`<option>${v}</option>`).join('');
-      $('#fEmpresa').innerHTML  = '<option value="">Todas</option>'+emp.map(v=>`<option>${v}</option>`).join('');
-      $('#fCliente').innerHTML  = '<option value="">-- Seleccione --</option>'+STATE.clientes.slice(1).map(r=>`<option>${r[idxCli]||''}</option>`).join('');
-    }
-    function applyFiltersClientes(rows){
-      const vend= $('#fVendedor').value.trim().toLowerCase();
-      const ges = $('#fGestor').value.trim().toLowerCase();
-      const emp = $('#fEmpresa').value.trim().toLowerCase();
-      const bus = $('#fBuscar').value.trim().toLowerCase();
-      const cli = $('#fCliente').value.trim().toLowerCase();
-      const sem = $('#fSemana').value.trim();
-      const dia = $('#fDia').value.trim().toLowerCase();
-      const hdr = rows[0]||[];
-      const idxNom = hdr.findIndex(h=>/cliente|nombre/i.test(String(h)));
-      const idxVend= hdr.findIndex(h=>/vendedor/i.test(String(h)));
-      const idxGes = hdr.findIndex(h=>/gestor/i.test(String(h)));
-      const idxEmp = hdr.findIndex(h=>/empresa/i.test(String(h)));
-      const idxCod = hdr.findIndex(h=>/cod/i.test(String(h)));
-      const idxSem = hdr.findIndex(h=>/n.?\s*semana|semana/i.test(String(h)));
-      const idxDia = hdr.findIndex(h=>/^dia$|^día$|dia|día/i.test(String(h)));
-      return rows.slice(1).filter(r=>{
-        const nombre=(r[idxNom]||'').toLowerCase();
-        const cod=(r[idxCod]||'').toLowerCase();
-        const v=(r[idxVend]||'').toLowerCase();
-        const g=(r[idxGes]||'').toLowerCase();
-        const e=(r[idxEmp]||'').toLowerCase();
-        const s=(r[idxSem]||'').toString().trim();
-        const d=(r[idxDia]||'').toLowerCase();
-        if(vend && v!==vend) return false;
-        if(ges && g!==ges) return false;
-        if(emp && e!==emp) return false;
-        if(sem && s!==sem) return false;
-        if(dia && d!==dia) return false;
-        if(cli && nombre!==cli) return false;
-        if(bus && !(nombre.includes(bus)||cod.includes(bus))) return false;
-        return true;
-      });
-    }
-    function renderClientesTabla(){
-      const tbody = $('#tblClientes tbody');
-      const hdr = STATE.clientes[0]||[];
-      const idxNom = hdr.findIndex(h=>/cliente|nombre/i.test(String(h)));
-      const idxVend= hdr.findIndex(h=>/vendedor/i.test(String(h)));
-      const idxGes = hdr.findIndex(h=>/gestor/i.test(String(h)));
-      const idxEmp = hdr.findIndex(h=>/empresa/i.test(String(h)));
-      const idxCod = hdr.findIndex(h=>/cod/i.test(String(h)));
-      const idxSem = hdr.findIndex(h=>/n.?\s*semana|semana/i.test(String(h)));
-      const idxDia = hdr.findIndex(h=>/^dia$|^día$|dia|día/i.test(String(h)));
-      const idxLat = hdr.findIndex(h=>String(h).toLowerCase().includes('lat'));
-      const idxLon = hdr.findIndex(h=>/lon|long/i.test(String(h).toLowerCase()));
-      const filtered = applyFiltersClientes(STATE.clientes);
-      const total = Math.max(STATE.clientes.length-1,0);
-      const withCoord = STATE.clientes.slice(1).filter(r=>!isNaN(parseFloat(r[idxLat])) && !isNaN(parseFloat(r[idxLon]))).length;
-      $('#statClientes').textContent = 'Clientes: '+total;
-      $('#statCoord').textContent = 'Con coordenadas: '+withCoord;
-      $('#statFiltrados').textContent = 'Filtrados: '+filtered.length;
-      tbody.innerHTML = filtered.map(r=>`
-        <tr>
-          <td>${r[idxCod]||''}</td>
-          <td>${r[idxNom]||''}</td>
-          <td>${r[idxSem]||''}</td>
-          <td>${r[idxDia]||''}</td>
-          <td>${r[idxVend]||''}</td>
-          <td>${r[idxGes]||''}</td>
-          <td>${r[idxEmp]||''}</td>
-        </tr>
-      `).join('');
-    }
+function renderReporte(){ const tb=$('#repTbl tbody'); tb.innerHTML=STATE.calls.map(r=>`<tr><td>${fmt(r.fechaHora)}</td><td>${r.cliente||''}</td><td>${r.codigo||''}</td><td>${r.empresa||''}</td><td>${r.vendedor||''}</td><td>${r.gestor||''}</td><td>${r.semana||''}</td><td>${r.dia||''}</td><td>${r.medio||''}</td><td>${r.resultado||''}</td><td>${r.duracion||''}</td><td>${r.obs||''}</td><td>${r.lat||''}</td><td>${r.lon||''}</td></tr>`).join(''); }
 
-    // ---------- REPORTE DETALLE ----------
-    function renderReporte(){
-      const tb = $('#repTbl tbody');
-      tb.innerHTML = STATE.calls.map(r=>`
-        <tr>
-          <td>${fmt(r.fechaHora)}</td>
-          <td>${r.cliente||''}</td>
-          <td>${r.codigo||''}</td>
-          <td>${r.vendedor||''}</td>
-          <td>${r.gestor||''}</td>
-          <td>${r.semana||''}</td>
-          <td>${r.resultado||''}</td>
-          <td>${r.duracion||''}</td>
-          <td>${r.obs||''}</td>
-        </tr>
-      `).join('');
-    }
+function applyEvents(){ 
+  $('#btnLogin').addEventListener('click', async ()=>{ const u=$('#lgUser').value.trim(); const p=$('#lgPass').value.trim(); const val=await validateLogin(u,p); if(!val) return; val.pass=p; saveUser(val); boot(); });
+  $('#btnLoginDemo').addEventListener('click', ()=>{ saveUser({user:'demo', rol:'adm'}); boot(); });
+  $('#btnLogout').addEventListener('click', ()=>{ localStorage.removeItem(AUTH_KEY); STATE.user=null; applyAuthUI(); });
+  $('#btnProbe').addEventListener('click', async ()=>{ $('#probeOut').textContent='Probando...'; const rows=await fetchCSV(STATE.cfg.usuarios); if(!rows.length){ $('#probeOut').textContent='No se pudo cargar Usuarios (revisa que esté Publicado y accesible).'; return; } const hdr=rows[0]||[]; const ixU=findColIx(hdr,['usuario','user','correo','email']); const ixP=findColIx(hdr,['contraseña','contrasena','password','pass','clave']); $('#probeOut').innerHTML = 'OK: filas='+rows.length+' | columnas='+hdr.length+' | user_ix='+ixU+' | pass_ix='+ixP; });
+  function findColIx(hdr, names){ const H=hdr.map(x=>String(x||'').toLowerCase()); for(const nm of names){ const i=H.findIndex(h=>h===nm||h.includes(nm)); if(i>-1) return i; } return -1; }
 
-    // ---------- EXPORTS ----------
-    function exportTableToCSV(tableId, filename){
-      const tbl = document.getElementById(tableId);
-      const out=[];
-      out.push(Array.from(tbl.querySelectorAll('thead th')).map(th=>`"${th.textContent.replace(/"/g,'""')}"`).join(','));
-      Array.from(tbl.querySelectorAll('tbody tr')).forEach(tr=>{ out.push(Array.from(tr.children).map(td=>`"${td.textContent.replace(/"/g,'""')}"`).join(',')); });
-      const blob = new Blob([out.join('\n')], {type:'text/csv;charset=utf-8;'});
-      const url = URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download=filename; a.click(); setTimeout(()=>URL.revokeObjectURL(url), 400);
-    }
-    function exportTableToXLSX(tableId, filename){
-      const tbl = document.getElementById(tableId);
-      const aoa=[];
-      aoa.push(Array.from(tbl.querySelectorAll('thead th')).map(th=>th.textContent.trim()));
-      Array.from(tbl.querySelectorAll('tbody tr')).forEach(tr=>{ aoa.push(Array.from(tr.children).map(td=>td.textContent.trim())); });
-      const ws = XLSX.utils.aoa_to_sheet(aoa);
-      const wb = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(wb, ws, 'Datos');
-      XLSX.writeFile(wb, filename);
-    }
+  $('#btnAgenda').addEventListener('click', ()=>{ renderAgenda(); $('#dlgAgenda').showModal(); });
+  $('#btnCerrarAgenda').addEventListener('click', ()=>$('#dlgAgenda').close());
+  $('#btnRegistrar').addEventListener('click', ()=>{ $('#mCliente').value=$('#fCliente').value||''; $('#mSemana').value=$('#fSemana').value||''; $('#mResultado').value='Exitosa con Cita'; $('#mMedio').value='Llamada'; $('#mFechaHora').value=''; $('#mVendedor').value=$('#fVendedor').value||''; $('#mGestor').value=$('#fGestor').value||''; $('#dlgReg').showModal(); });
+  $('#btnCancel').addEventListener('click', (e)=>{ e.preventDefault(); $('#dlgReg').close(); });
+  $('#mFechaHora').addEventListener('change', ()=>{ const v=$('#mFechaHora').value; if(v){ const d=new Date(v); $('#mDia').value=dayName(d); $('#mSemana').value=weekOfMonthFromDate(v); } });
+  $('#btnSave').addEventListener('click', (e)=>{ e.preventDefault(); const semana=$('#mSemana').value; if(!['1','2','3','4'].includes(semana)){ alert('Seleccione N° Semana (1..4)'); return; } const required=[['#mCliente','Cliente'],['#mVendedor','Vendedor'],['#mGestor','Gestor'],['#mFechaHora','Fecha/hora']]; for(const [sel,lab] of required){ if(!document.querySelector(sel).value.trim()){ alert('Complete: '+lab); return; } } const rec={ fechaHora:$('#mFechaHora').value||new Date().toISOString(), cliente:$('#mCliente').value, codigo:$('#mCod').value, empresa:$('#mEmpresa').value, vendedor:$('#mVendedor').value, gestor:$('#mGestor').value, contacto:$('#mContacto').value, telefono:$('#mTelefono').value, medio:$('#mMedio').value, semana:semana, dia:$('#mDia').value, resultado:$('#mResultado').value, duracion:$('#mDuracion')?$('#mDuracion').value:'', obs:$('#mObs').value, lat:$('#mLat').value, lon:$('#mLon').value }; STATE.calls.push(rec); try{ localStorage.setItem(CALLS_KEY, JSON.stringify(STATE.calls)); }catch(e){} $('#dlgReg').close(); renderReporte(); showErr('Llamada registrada (local).'); });
+  $('#btnReporte').addEventListener('click', ()=>{ renderReporte(); $('#dlgRep').showModal(); });
+  $('#btnCerrarRep').addEventListener('click', ()=>$('#dlgRep').close());
+  $('#btnReporteRes').addEventListener('click', async ()=>{ if(!STATE.cfg.calendario){ showErr('Configura primero la URL del Calendario (plan)'); return; } if(!STATE.calendario.length) STATE.calendario=await fetchCSV(STATE.cfg.calendario); if(!STATE.calendario.length){ showErr('No se pudo cargar el Calendario.'); return; } const hdr=STATE.calendario[0]||[]; const semanas=['1','2','3','4']; const esper={}; const iSem=findColIx(hdr,['semana','n semana']); const iCant=findColIx(hdr,['plan','cantidad','objetivo','llamada']); (STATE.calendario.slice(1)).forEach(r=>{ const s=String(r[iSem]||'').trim(); const c=Number(r[iCant]||0)||0; esper[s]=(esper[s]||0)+c; }); const real={}; STATE.calls.forEach(c=>{ const s=c.semana||'1'; real[s]=(real[s]||0)+1; }); let totE=0,totR=0; const rows=semanas.map(s=>{ const e=esper[s]||0; const r=real[s]||0; const pct=e?Math.round(r/e*100):(r?100:0); totE+=e; totR+=r; return `<tr><td>${s}</td><td>${e}</td><td>${r}</td><td>${pct}%</td></tr>`; }).join(''); $('#kpiTbl tbody').innerHTML=rows; $('#kpiEsperadas').textContent=totE; $('#kpiRealizadas').textContent=totR; $('#kpiPct').textContent=(totE?Math.round(totR/totE*100):(totR?100:0))+'%'; $('#dlgKPI').showModal(); });
+  $('#btnNuevoCliente').addEventListener('click', ()=>{ if(STATE.cfg.formNuevoCliente) window.open(STATE.cfg.formNuevoCliente,'_blank'); else showErr('Configura la URL del formulario.'); });
+  $('#btnRestaurar').addEventListener('click', ()=>{ if(confirm('¿Restaurar estado? (limpia llamadas locales)')){ STATE.calls=[]; localStorage.removeItem(CALLS_KEY); renderReporte(); showErr('Estado restaurado.'); } });
+  $('#btnConfig').addEventListener('click', ()=>{ $('#cfgUsuarios').value=STATE.cfg.usuarios||''; $('#cfgClientes').value=STATE.cfg.clientes||''; $('#cfgCalendario').value=STATE.cfg.calendario||''; $('#cfgForm').value=STATE.cfg.formNuevoCliente||''; $('#dlgCfg').showModal(); });
+  $('#btnCancelCfg').addEventListener('click', (e)=>{ e.preventDefault(); $('#dlgCfg').close(); });
+  $('#btnSaveCfg').addEventListener('click', async (e)=>{ e.preventDefault(); STATE.cfg=sanitizeCfg({ usuarios:$('#cfgUsuarios').value.trim(), clientes:$('#cfgClientes').value.trim(), calendario:$('#cfgCalendario').value.trim(), formNuevoCliente:$('#cfgForm').value.trim() }); saveCfg(STATE.cfg); $('#dlgCfg').close(); showErr('Configuración guardada. Recargando datos...'); STATE.usuarios=[]; STATE.clientes=await fetchCSV(STATE.cfg.clientes); fillCombos(); renderClientesTabla(); renderMap(); if(STATE.cfg.calendario) STATE.calendario=await fetchCSV(STATE.cfg.calendario); });
+  ['fSemana','fDia','fVendedor','fGestor','fEmpresa','fBuscar','fCliente'].forEach(id=>{ document.getElementById(id).addEventListener('input', ()=>{ renderClientesTabla(); renderMap(); }); document.getElementById(id).addEventListener('change', ()=>{ renderClientesTabla(); renderMap(); }); });
+  $('#btnFiltros').addEventListener('click', ()=>{ const f=$('#filtros'); f.style.display=(f.style.display==='none'?'grid':'none'); f.style.gridTemplateColumns='repeat(6, minmax(160px, 1fr))'; });
+  $('#btnLegend').addEventListener('click', ()=>{ const el=$('#legend'); el.style.display=(el.style.display==='none'?'block':'none'); });
+  $('#btnExportCSV').addEventListener('click', ()=>{ exportTableToCSV('tblClientes', 'clientes_filtrados.csv'); });
+  $('#btnExportXLSX').addEventListener('click', ()=>{ exportTableToXLSX('tblClientes', 'clientes_filtrados.xlsx'); });
+  $('#btnExportCSVDet').addEventListener('click', ()=>{ exportTableToCSV('repTbl', 'llamadas.csv'); });
+  $('#btnExportXLSXDet').addEventListener('click', ()=>{ exportTableToXLSX('repTbl', 'llamadas.xlsx'); });
+}
 
-    // ---------- KPI ----------
-    function weekOfMonthFromDate(isoDate){
-      if(!isoDate) return '';
-      const d=new Date(isoDate); if(isNaN(d)) return '';
-      const firstDay = new Date(d.getFullYear(), d.getMonth(), 1).getDay() || 7;
-      const day = d.getDate();
-      return String(Math.ceil((day + firstDay - 1)/7));
-    }
-    function diaTextoFromDate(isoDate){
-      const d=new Date(isoDate); if(isNaN(d)) return '';
-      return ['Domingo','Lunes','Martes','Miércoles','Jueves','Viernes','Sábado'][d.getDay()];
-    }
-    function parsePlanCalendario(rows){
-      const hdr = rows[0]||[];
-      const iGes = hdr.findIndex(h=>/gestor|gestor_servicio/i.test(String(h)));
-      const iSem = hdr.findIndex(h=>/n.?\s*semana|semana/i.test(String(h)));
-      const iDia = hdr.findIndex(h=>/^dia$|^día$|dia|día/i.test(String(h)));
-      const iCant= hdr.findIndex(h=>/plan|llamada|meta|objetivo|cantidad/i.test(String(h)));
-      return rows.slice(1).map(r=>({
-        gestor:(r[iGes]||'').trim(),
-        semana:String(r[iSem]||'').trim(),
-        dia:(r[iDia]||'').trim(),
-        cantidad: Number(r[iCant]||0) || 0
-      }));
-    }
-    function kpiCompute(){
-      const fGes = $('#fGestor').value.trim();
-      const fSem = $('#fSemana').value.trim();
-      const fDia = $('#fDia').value.trim();
-      const plan = parsePlanCalendario(STATE.calendario).filter(p=>{ if(fGes && p.gestor!==fGes) return false; if(fSem && p.semana!==fSem) return false; if(fDia && p.dia && p.dia!==fDia) return false; return true; });
-      const esperadasBySem = {}; plan.forEach(p=>{ esperadasBySem[p.semana] = (esperadasBySem[p.semana]||0) + p.cantidad; });
-      const realizadasBySem = {};
-      STATE.calls.forEach(c=>{ const sem = c.semana || weekOfMonthFromDate(c.fechaHora); const dia = c.dia || diaTextoFromDate(c.fechaHora);
-        if(fGes && (c.gestor||'') !== fGes) return; if(fSem && sem !== fSem) return; if(fDia && dia !== fDia) return;
-        realizadasBySem[sem] = (realizadasBySem[sem]||0) + 1;
-      });
-      const semanas = ['1','2','3','4']; let totE=0, totR=0;
-      const rows = semanas.map(s=>{ const e = esperadasBySem[s]||0; const r = realizadasBySem[s]||0; const pct = e? Math.round((r/e)*100): (r?100:0); totE+=e; totR+=r; return {s,e,r,pct}; });
-      $('#kpiEsperadas').textContent = totE; $('#kpiRealizadas').textContent = totR; $('#kpiPct').textContent = (totE? Math.round((totR/totE)*100): (totR?100:0)) + '%';
-      $('#kpiTbl tbody').innerHTML = rows.map(o=>`<tr><td>${o.s}</td><td>${o.e}</td><td>${o.r}</td><td>${o.pct}%</td></tr>`).join('');
-    }
+function exportTableToCSV(tableId, filename){ const tbl=document.getElementById(tableId); const out=[]; out.push(Array.from(tbl.querySelectorAll('thead th')).map(th=>`"${th.textContent.replace(/"/g,'""')}"`).join(',')); Array.from(tbl.querySelectorAll('tbody tr')).forEach(tr=>{ out.push(Array.from(tr.children).map(td=>`"${td.textContent.replace(/"/g,'""')}"`).join(',')); }); const blob=new Blob([out.join('\n')],{type:'text/csv;charset=utf-8;'}); const url=URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download=filename; a.click(); setTimeout(()=>URL.revokeObjectURL(url), 400); }
+function exportTableToXLSX(tableId, filename){ const tbl=document.getElementById(tableId); const aoa=[]; aoa.push(Array.from(tbl.querySelectorAll('thead th')).map(th=>th.textContent.trim())); Array.from(tbl.querySelectorAll('tbody tr')).forEach(tr=>{ aoa.push(Array.from(tr.children).map(td=>td.textContent.trim())); }); const ws=XLSX.utils.aoa_to_sheet(aoa); const wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, 'Datos'); XLSX.writeFile(wb, filename); }
 
-    // ---------- BOOT ----------
-    async function boot(){
-      // Revalidar sesión si existe o si ?login=1 forzado
-      loadUser();
-      if(QS.get('login')==='1'){ localStorage.removeItem(AUTH_KEY); STATE.user=null; applyAuthUI(); }
-      if(STATE.user){
-        const ok = await revalidateSession();
-        if(!ok) return;
-        // setup app
-        initMap();
-        try{ STATE.calls = JSON.parse(localStorage.getItem(CALLS_KEY)||'[]'); }catch(e){ STATE.calls=[]; }
-        STATE.clientes = await fetchCSV(STATE.cfg.clientes);
-        if(!STATE.clientes.length) showErr('Clientes: sin datos. Revisa ⚙️ Configurar → URL CSV.');
-        fillCombos(); renderClientesTabla(); renderMap();
-        if(STATE.cfg.calendario) STATE.calendario = await fetchCSV(STATE.cfg.calendario);
-      }
-    }
-
-    // ---------- EVENTS ----------
-    $('#btnLogin').addEventListener('click', async ()=>{
-      const u = $('#lgUser').value.trim();
-      const p = $('#lgPass').value.trim();
-      const val = await validateLogin(u, p);
-      if(!val){ showErr('Usuario o contraseña no válidos.'); return; }
-      val.pass = p; // store to revalidate
-      saveUser(val); boot();
-    });
-    $('#btnLoginDemo').addEventListener('click', ()=>{ if(!STATE.cfg.usuarios){ saveUser({user:'demo', rol:'adm'}); boot(); } else showErr('Deshabilitado: hay URL de usuarios configurada.'); });
-    $('#btnLogout').addEventListener('click', ()=>{ localStorage.removeItem(AUTH_KEY); STATE.user = null; applyAuthUI(); });
-
-    $('#btnRegistrar').addEventListener('click', ()=>{ const selCli = $('#fCliente').value || ''; $('#mCliente').value = selCli; $('#mSemana').value = $('#fSemana').value || ''; $('#mResultado').value = 'Exitosa con Cita'; $('#mDuracion').value = '0'; $('#mFechaHora').value = ''; $('#mVendedor').value = $('#fVendedor').value || ''; $('#mGestor').value = $('#fGestor').value || ''; $('#dlgReg').showModal(); });
-    $('#btnCancel').addEventListener('click', (e)=>{ e.preventDefault(); $('#dlgReg').close(); });
-    $('#btnSave').addEventListener('click', (e)=>{ e.preventDefault(); const semana = $('#mSemana').value; if(!['1','2','3','4'].includes(semana)){ alert('Seleccione el N° Semana (1..4)'); return; } const required = [['#mCliente','Cliente'],['#mVendedor','Vendedor'],['#mGestor','Gestor'],['#mFechaHora','Fecha/hora']]; for(const [sel,lab] of required){ if(!$(sel).value.trim()){ alert('Complete: '+lab); return; } } const rec = { fechaHora: $('#mFechaHora').value || new Date().toISOString(), cliente: $('#mCliente').value, codigo: $('#mCod').value, vendedor: $('#mVendedor').value, gestor: $('#mGestor').value, semana: semana, resultado: $('#mResultado').value, duracion: $('#mDuracion').value, obs: $('#mObs').value }; STATE.calls.push(rec); try{ localStorage.setItem(CALLS_KEY, JSON.stringify(STATE.calls)); }catch(e){} $('#dlgReg').close(); renderReporte(); showErr('Llamada registrada (local).'); });
-    $('#btnReporte').addEventListener('click', ()=>{ renderReporte(); $('#dlgRep').showModal(); });
-    $('#btnCerrarRep').addEventListener('click', ()=>$('#dlgRep').close());
-    $('#btnReporteRes').addEventListener('click', async ()=>{ if(!STATE.cfg.calendario){ showErr('Configura primero la URL del Calendario (plan) para calcular KPI.'); } else if(!STATE.calendario.length){ STATE.calendario = await fetchCSV(STATE.cfg.calendario); if(!STATE.calendario.length) showErr('No se pudo cargar el Calendario. Verifica el enlace.'); } kpiCompute(); $('#dlgKPI').showModal(); });
-    $('#btnCerrarKPI').addEventListener('click', ()=>$('#dlgKPI').close());
-    $('#btnVerFicha').addEventListener('click', ()=>alert('Versión de prueba: usa los filtros para prellenar Registrar llamada.'));
-    $('#btnNuevoCliente').addEventListener('click', ()=>{ if(STATE.cfg.formNuevoCliente) window.open(STATE.cfg.formNuevoCliente, '_blank'); else showErr('Configura la URL del Formulario de "Nuevo cliente".'); });
-    $('#btnRestaurar').addEventListener('click', ()=>{ if(confirm('¿Restaurar estado? (limpia llamadas locales)')){ STATE.calls=[]; localStorage.removeItem(CALLS_KEY); renderReporte(); showErr('Estado restaurado.'); } });
-    $('#btnConfig').addEventListener('click', ()=>{ $('#cfgUsuarios').value = STATE.cfg.usuarios || ''; $('#cfgClientes').value = STATE.cfg.clientes || ''; $('#cfgCalendario').value = STATE.cfg.calendario || ''; $('#cfgForm').value = STATE.cfg.formNuevoCliente || ''; $('#dlgCfg').showModal(); });
-    $('#btnCancelCfg').addEventListener('click', (e)=>{ e.preventDefault(); $('#dlgCfg').close(); });
-    $('#btnSaveCfg').addEventListener('click', (e)=>{ e.preventDefault(); STATE.cfg = sanitizeCfg({ usuarios: $('#cfgUsuarios').value.trim(), clientes: $('#cfgClientes').value.trim(), calendario: $('#cfgCalendario').value.trim(), formNuevoCliente: $('#cfgForm').value.trim() }); saveCfg(STATE.cfg); $('#dlgCfg').close(); showErr('Configuración guardada. Recargando...'); (async ()=>{ STATE.usuarios=[]; STATE.clientes = await fetchCSV(STATE.cfg.clientes); fillCombos(); renderClientesTabla(); renderMap(); if(STATE.cfg.calendario) STATE.calendario = await fetchCSV(STATE.cfg.calendario); })(); });
-    $('#btnExportCSV').addEventListener('click', ()=>exportTableToCSV('tblClientes','Clientes_filtrados.csv'));
-    $('#btnExportXLSX').addEventListener('click', ()=>exportTableToXLSX('tblClientes','Clientes_filtrados.xlsx'));
-    $('#btnExportCSVDet').addEventListener('click', ()=>exportTableToCSV('repTbl','Llamadas.csv'));
-    $('#btnExportXLSXDet').addEventListener('click', ()=>exportTableToXLSX('repTbl','Llamadas.xlsx'));
-    ['fSemana','fDia','fVendedor','fGestor','fEmpresa','fBuscar','fCliente'].forEach(id=>{ document.getElementById(id).addEventListener('input', ()=>{ renderClientesTabla(); renderMap(); }); document.getElementById(id).addEventListener('change', ()=>{ renderClientesTabla(); renderMap(); }); });
-    document.getElementById('btnFiltros').addEventListener('click', ()=>{ const f = document.getElementById('filtros'); f.style.display = (f.style.display==='none'?'grid':'none'); f.style.gridTemplateColumns='repeat(6, minmax(160px, 1fr))'; });
-    document.getElementById('btnLegend').addEventListener('click', ()=>{ const el = document.getElementById('legend'); el.style.display = (el.style.display==='none'?'block':'none'); });
-    boot();
-  </script>
+async function boot(){ $('#uUrl').textContent = STATE.cfg.usuarios; loadUser(); if(STATE.user){ const val=await validateLogin(STATE.user.user, STATE.user.pass||''); if(!val){ localStorage.removeItem(AUTH_KEY); STATE.user=null; applyAuthUI(); showErr('Sesión inválida. Inicia de nuevo.'); return; } initMap(); try{ STATE.calls=JSON.parse(localStorage.getItem(CALLS_KEY)||'[]'); }catch(e){ STATE.calls=[]; } STATE.clientes=await fetchCSV(STATE.cfg.clientes); if(!STATE.clientes.length) showErr('Clientes: sin datos.'); fillCombos(); renderClientesTabla(); renderMap(); if(STATE.cfg.calendario) STATE.calendario=await fetchCSV(STATE.cfg.calendario); } }
+applyEvents(); boot();
+</script>
 </body>
 </html>
