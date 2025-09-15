@@ -4653,5 +4653,70 @@ document.getElementById('rsTabReal').onclick = (e)=>{ e.target.classList.add('ac
 })();
 </script>
 
+
+<script>
+// === GW PATCH v2: Vendedor/Gestor desde Calendario (STATE.joined) ===
+(function(){
+  function uniq(a){ return Array.from(new Set(a.filter(Boolean).map(s=> String(s).trim()))); }
+  function norm(s){ return String(s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim(); }
+
+  function buildSelectFromInput(id){
+    const el = document.getElementById(id);
+    if(!el) return null;
+    let sel;
+    if(el.tagName.toLowerCase()==='select'){ sel = el; sel.innerHTML = ''; }
+    else{
+      sel = document.createElement('select');
+      sel.id = id;
+      sel.className = el.className || '';
+      el.parentElement.replaceChild(sel, el);
+    }
+    const opt = document.createElement('option');
+    opt.value = ''; opt.textContent = '(todos)';
+    sel.appendChild(opt);
+    return sel;
+  }
+
+  function valuesFromCalendario(){
+    try{
+      const joined = (window.STATE && Array.isArray(window.STATE.joined)) ? window.STATE.joined : [];
+      const vend = uniq(joined.map(r=> r.vendedor).filter(v=>norm(v)!=='por asignar')).sort((a,b)=> a.localeCompare(b,'es',{sensitivity:'base'}));
+      const gest = uniq(joined.map(r=> r.gestor).filter(g=>norm(g)!=='por asignar')).sort((a,b)=> a.localeCompare(b,'es',{sensitivity:'base'}));
+      return {vend, gest};
+    }catch(e){ console.error('vals cal', e); return {vend:[], gest:[]}; }
+  }
+
+  function ensureRepDropdownsFromCal(){
+    const {vend, gest} = valuesFromCalendario();
+    const sVend = buildSelectFromInput('repVendedor');
+    const sGest = buildSelectFromInput('repGestor');
+    if(sVend && !sVend.__filled){
+      vend.forEach(v=>{ const o=document.createElement('option'); o.value=v; o.textContent=v; sVend.appendChild(o); });
+      sVend.__filled = true;
+    }
+    if(sGest && !sGest.__filled){
+      gest.forEach(g=>{ const o=document.createElement('option'); o.value=g; o.textContent=g; sGest.appendChild(o); });
+      sGest.__filled = true;
+    }
+    [sVend,sGest].forEach(el=> el && !el.__bound && (el.__bound=true, el.addEventListener('change', ()=>{
+      try{ window.renderReporte && window.renderReporte(); }catch(e){}
+    })));
+  }
+
+  // Llamar cuando ya esté cargado STATE.joined
+  const _openReporte = window.openReporte;
+  window.openReporte = function(){ try{ ensureRepDropdownsFromCal(); }catch(_){ } if(_openReporte) return _openReporte(); };
+
+  document.addEventListener('DOMContentLoaded', function(){
+    // Si STATE ya está, rellenar; si no, esperar un poco
+    if(window.STATE && Array.isArray(STATE.joined) && STATE.joined.length){
+      ensureRepDropdownsFromCal();
+    }else{
+      setTimeout(ensureRepDropdownsFromCal, 800);
+    }
+  });
+})();
+</script>
+
 </body>
 </html>
