@@ -673,21 +673,72 @@ function mapUserRecord(r){
 function vendorExcludedSet(){ const arr = CONFIG.excluirVendedores || []; return new Set(arr.map(v=> normName(v) ).filter(Boolean)); }
 function isVendorExcluded(name){ if(!name) return false; return vendorExcludedSet().has(normName(name)); }
 
+
 function buildJoined(){
-  const idxCal = {}; const getDia = r => r['Dia'] ?? r['Día'] ?? r['dia'] ?? r['DIA']; const getSem = r => r['Semana'] ?? r['SEMANA'] ?? r['semana'];
-  STATE.calendario.forEach(r=>{ const key = norm(pick(r, JOIN_KEYS)); if(!key) return; if(!idxCal[key]) idxCal[key]=r; });
-  STATE.joined = STATE.clientes.map(c=>{
-    const key = norm(pick(c, JOIN_KEYS)); const m = idxCal[key]; const semana = m ? (getSem(m) || 'Por asignar') : 'Por asignar'; const dia = m ? (getDia(m) || 'Por asignar') : 'Por asignar';
-    const lat = getLat(c); const lon = getLon(c);
-    const vendedor = detectVendedor(c);
-    return { cod: pick(c, JOIN_KEYS) || '', nombre: c['NombreCliente']||c['Cliente']||c['RazonSocial']||c['RAZONSOCIAL']||'', semana, dia,
-      vendedor, gestor: c['gestor_servicio']||c['Gestor']||c['GESTOR_SERVICIO']||'', empresa: c['Empresa']||c['EMPRESA']||'', lat, lon,
+  // Index de clientes por Cod
+  const idxCli = {};
+  STATE.clientes.forEach(c=>{ const key = norm(pick(c, JOIN_KEYS)); if(!key) return; idxCli[key] = c; });
+
+  const getDia = r => r['Dia'] ?? r['Día'] ?? r['dia'] ?? r['DIA'] ?? r['Días'] ?? r['Días'] ?? '';
+  const getSem = r => r['Semana'] ?? r['SEMANA'] ?? r['semana'] ?? r['N Semana'] ?? r['N_Semana'] ?? r['n_semana'] ?? '';
+  const getVend = r => r['vendedor'] ?? r['Vendedor'] ?? r['VENDEDOR'] ?? '';
+  const getGes  = r => r['gestor_servicio'] ?? r['Gestor'] ?? r['GESTOR'] ?? '';
+  const getEmp  = r => r['Cod Empresa'] ?? r['CodEmpresa'] ?? r['Cod_Empresa'] ?? r['codigo_npg'] ?? r['Codigo NPG'] ?? r['Codigo_NPG'] ?? r['CODIGO_NPG'] ?? '';
+
+  const getLat = c => Number(c['lat'] ?? c['Lat'] ?? c['LAT'] ?? c['latitud'] ?? c['Latitud']);
+  const getLon = c => Number(c['lon'] ?? c['Lng'] ?? c['LON'] ?? c['longitud'] ?? c['Longitud']);
+
+  const detectVendedor = c => c['vendedor'] ?? c['Vendedor'] ?? c['VENDEDOR'] ?? '';
+  const detectGestor   = c => c['gestor_servicio'] ?? c['Gestor'] ?? c['GESTOR'] ?? '';
+
+  const arr = [];
+
+  // 1) Todos los registros del calendario (posibles duplicados por cliente)
+  for(const m of STATE.calendario){
+    const cod = norm(getEmp(m));
+    if(!cod) continue;
+    const c = idxCli[cod] || {};
+    const lat = getLat(c), lon = getLon(c);
+    arr.push({
+      cod: cod,
+      nombre: c['NombreCliente']||c['Nombre Cliente']||c['Cliente']||c['RazonSocial']||c['RAZONSOCIAL']|| m['RazonSocial'] || '',
+      semana: getSem(m) || 'Por asignar',
+      dia: getDia(m) || 'Por asignar',
+      vendedor: getVend(m) || detectVendedor(c),
+      gestor: getGes(m) || detectGestor(c),
+      empresa: m['Empresa']||c['Empresa']||'',
+      lat, lon,
       telefono1: c['Telefono1']||c['TEL1']||c['Telefono']||c['Tel']||c['TEL']||'',
-      celular: c['Celular']||c['CELULAR']||c['Movil']||c['Móvil']||'',
-      provincia: c['Provincia']||c['PROVINCIA']||c['estado']||c['Departamento']||'' };
-  });
+      celular:   c['Celular']||c['CELULAR']||c['Movil']||c['Móvil']||'',
+      provincia: c['Provincia']||c['PROVINCIA']||c['estado']||c['Departamento']||''
+    });
+  }
+
+  // 2) Añadir clientes SIN ninguna entrada en calendario => "Por asignar"
+  const codsConCalendario = new Set(STATE.calendario.map(m=> norm(getEmp(m))).filter(Boolean));
+  for(const c of STATE.clientes){
+    const cod = norm(pick(c, JOIN_KEYS));
+    if(!cod || codsConCalendario.has(cod)) continue;
+    const lat = getLat(c), lon = getLon(c);
+    arr.push({
+      cod: cod,
+      nombre: c['NombreCliente']||c['Nombre Cliente']||c['Cliente']||c['RazonSocial']||c['RAZONSOCIAL']||'',
+      semana: 'Por asignar',
+      dia: 'Por asignar',
+      vendedor: detectVendedor(c),
+      gestor: detectGestor(c),
+      empresa: c['Empresa']||'',
+      lat, lon,
+      telefono1: c['Telefono1']||c['TEL1']||c['Telefono']||c['Tel']||c['TEL']||'',
+      celular:   c['Celular']||c['CELULAR']||c['Movil']||c['Móvil']||'',
+      provincia: c['Provincia']||c['PROVINCIA']||c['estado']||c['Departamento']||''
+    });
+  }
+
+  STATE.joined = arr;
   if((CONFIG.excluirVendedores||[]).length){ STATE.joined = STATE.joined.filter(x=> !isVendorExcluded(x.vendedor) ); }
 }
+
 
 // ======================= UI RENDER =======================
 function buildFilters(){
@@ -727,7 +778,20 @@ function renderTable(){
 }
 
 // ===== Map with PIN icons =====
-function initMap(){ if(STATE.map) return; const RD=[18.735693,-70.162651]; STATE.map=L.map('map',{zoomControl:true}).setView(RD,8); L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19, attribution:'&copy; OpenStreetMap'}).addTo(STATE.map); setTimeout(()=>STATE.map.invalidateSize(), 200); window.addEventListener('resize', ()=>STATE.map&&STATE.map.invalidateSize()); }
+function initMap(){ if(STATE.map) return; const RD=[18.735693,-70.162651]; STATE.map=L.map('map',{zoomControl:true}).setView(RD,8);
+      // Asegurar capa base y centrado en RD
+      const RD=[18.735693,-70.162651];
+      if(!STATE._tileAdded){
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{
+          maxZoom: 19,
+          attribution: '&copy; OpenStreetMap'
+        }).addTo(map);
+        STATE._tileAdded = true;
+      }
+      map.setView(RD,8);
+      setTimeout(()=> map.invalidateSize && map.invalidateSize(), 120);
+      window.addEventListener('load', ()=> map.invalidateSize && map.invalidateSize());
+     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19, attribution:'&copy; OpenStreetMap'}).addTo(STATE.map); setTimeout(()=>STATE.map.invalidateSize(), 200); window.addEventListener('resize', ()=>STATE.map&&STATE.map.invalidateSize()); }
 function clearMarkers(){ STATE.markers.forEach(m=>STATE.map.removeLayer(m)); STATE.markers=[]; }
 function getVendedorColor(v){ if(!v) return '#9aa3b2'; if(!STATE.colorByVendedor[v]) STATE.colorByVendedor[v]=hashColor(v); return STATE.colorByVendedor[v]; }
 function svgPin(color){ const fill=color||'#3b82f6'; const stroke='#08121f'; const svg=`<svg xmlns="http://www.w3.org/2000/svg" width="26" height="38" viewBox="0 0 26 38"><path d="M13 0C7 0 2 5 2 11c0 7.5 9 17 11 19 2-2 11-11.5 11-19C24 5 19 0 13 0z" fill="${fill}" stroke="${stroke}" stroke-width="2"/><circle cx="13" cy="12" r="4.2" fill="#fff" stroke="${stroke}" stroke-width="2"/></svg>`; return 'data:image/svg+xml;base64,'+btoa(svg); }
@@ -5072,14 +5136,11 @@ document.getElementById('rsTabReal').onclick = (e)=>{ e.target.classList.add('ac
         
         // Semana/Día: si ambos están seleccionados, exigir coincidencia exacta (sin "Por asignar").
         // Si solo uno está seleccionado, permitir filas sin asignación en el otro campo.
-        if(fSemana && fDia){
-          if(!(String(x.semana)===String(fSemana))) return false;
-          if(!(String(x.dia)===String(fDia))) return false;
-        } else {
-          if(fSemana && !(String(x.semana)===String(fSemana) || !x.semana || norm(x.semana)==='por asignar')) return false;
-          if(fDia && !(String(x.dia)===String(fDia) || !x.dia || norm(x.dia)==='por asignar')) return false;
-        }
-if(fVend && String(x.vendedor)!==String(fVend)) return false;
+        
+        // Semana/Día: incluir asignados + 'Por asignar' cuando esté seleccionado
+        if(fSemana && !(String(x.semana)===String(fSemana) || !x.semana || norm(x.semana)==='por asignar')) return false;
+        if(fDia && !(String(x.dia)===String(fDia) || !x.dia || norm(x.dia)==='por asignar')) return false;
+    if(fVend && String(x.vendedor)!==String(fVend)) return false;
         if(fGes && String(x.gestor)!==String(fGes)) return false;
         if(fEmp && String(x.empresa)!==String(fEmp)) return false;
         if(fBus){
