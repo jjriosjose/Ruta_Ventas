@@ -4718,5 +4718,73 @@ document.getElementById('rsTabReal').onclick = (e)=>{ e.target.classList.add('ac
 })();
 </script>
 
+
+<script>
+// === GW PATCH v3: Dropdowns robustos (Calendario con fallback a llamadas) ===
+(function(){
+  function uniq(a){ return Array.from(new Set(a.filter(Boolean).map(s=> String(s).trim()))); }
+  function norm(s){ return String(s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim(); }
+
+  function ensureSelect(id){
+    const el = document.getElementById(id);
+    if(!el) return null;
+    if(el.tagName.toLowerCase()==='select') return el;
+    const sel = document.createElement('select');
+    sel.id = id;
+    sel.className = el.className || '';
+    el.parentElement.replaceChild(sel, el);
+    return sel;
+  }
+  function resetOptions(sel){
+    if(!sel) return;
+    sel.innerHTML = '';
+    const opt = document.createElement('option');
+    opt.value = ''; opt.textContent = '(todos)';
+    sel.appendChild(opt);
+  }
+  function getValuesFromCalendarOrCalls(){
+    let vend = [], gest = [];
+    try{
+      const joined = (window.STATE && Array.isArray(STATE.joined)) ? STATE.joined : [];
+      if(joined && joined.length){
+        vend = uniq(joined.map(r=> r.vendedor).filter(v=> v && norm(v)!=='por asignar'))
+               .sort((a,b)=> a.localeCompare(b,'es',{sensitivity:'base'}));
+        gest = uniq(joined.map(r=> r.gestor).filter(g=> g && norm(g)!=='por asignar'))
+               .sort((a,b)=> a.localeCompare(b,'es',{sensitivity:'base'}));
+      }
+      if((vend.length===0 || gest.length===0) && typeof window.loadAllCallRecords==='function'){
+        const all = loadAllCallRecords();
+        if(vend.length===0) vend = uniq(all.map(r=> r.vendedor)).sort((a,b)=> a.localeCompare(b,'es',{sensitivity:'base'}));
+        if(gest.length===0) gest = uniq(all.map(r=> r.gestor_servicio||r.gestor)).sort((a,b)=> a.localeCompare(b,'es',{sensitivity:'base'}));
+      }
+    }catch(e){ console.error('getValuesFromCalendarOrCalls', e); }
+    return {vend, gest};
+  }
+  function fillDropdowns(){
+    const sVend = ensureSelect('repVendedor');
+    const sGest = ensureSelect('repGestor');
+    if(!sVend && !sGest) return;
+    resetOptions(sVend); resetOptions(sGest);
+    const {vend, gest} = getValuesFromCalendarOrCalls();
+    vend.forEach(v=>{ const o=document.createElement('option'); o.value=v; o.textContent=v; sVend && sVend.appendChild(o); });
+    gest.forEach(g=>{ const o=document.createElement('option'); o.value=g; o.textContent=g; sGest && sGest.appendChild(o); });
+    [sVend,sGest].forEach(el=> el && el.addEventListener('change', ()=>{ try{ window.renderReporte && window.renderReporte(); }catch(_){ } }));
+  }
+
+  // Re-llenar SIEMPRE al abrir el reporte (por si los datos llegaron tarde)
+  const _openReporte = window.openReporte;
+  window.openReporte = function(){ try{ fillDropdowns(); }catch(_){ } if(_openReporte) return _openReporte(); };
+
+  // Y también al cargar (con retry si aún no hay STATE.joined)
+  function tryFill(retries){
+    fillDropdowns();
+    if(retries>0 && (!window.STATE || !STATE.joined || STATE.joined.length===0)){
+      setTimeout(()=>tryFill(retries-1), 400);
+    }
+  }
+  document.addEventListener('DOMContentLoaded', ()=> tryFill(5));
+})();
+</script>
+
 </body>
 </html>
