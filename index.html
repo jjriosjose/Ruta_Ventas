@@ -996,13 +996,13 @@ body.show-resumen #screenResumenSem > .card {
     const u = (document.getElementById('loginUser')||{}).value||'';
     const p = (document.getElementById('loginPass')||{}).value||'';
     // demo fallback
-    if(norm(u)==='demo' && p==='1234'){ STATE.me={usuario:'DEMO',permiso:'administrador'}; localStorage.setItem(AUTH_KEY, JSON.stringify(STATE.me)); setView('app'); return; }
+    if(norm(u)==='demo' && p==='1234'){ STATE.me={usuario:'DEMO',permiso:'administrador', ts: Date.now()}; localStorage.setItem(AUTH_KEY, JSON.stringify(STATE.me)); setView('app'); return; }
     if(!STATE.users.length) await loadUsers();
     const cand = STATE.users.find(r=>norm(r.Usuario)===norm(u));
     if(!cand){ alert('Usuario no encontrado'); return; }
     const ok = (String(cand.Password||'')===p) || (p==='1234' && !cand.Password);
     if(!ok){ alert('Contraseña incorrecta'); return; }
-    STATE.me = {usuario: cand.Usuario, permiso: cand.Permiso||'usuario'};
+    STATE.me = {usuario: cand.Usuario, permiso: cand.Permiso||'usuario', ts: Date.now()};
     localStorage.setItem(AUTH_KEY, JSON.stringify(STATE.me));
     setView('app');
   }
@@ -1041,6 +1041,9 @@ body.show-resumen #screenResumenSem > .card {
     document.getElementById('btnCfgProbar')?.addEventListener('click', async()=>{ await loadUsers(); alert('Usuarios leídos: '+STATE.users.length); });
     // Auto precarga
     loadUsers();
+    restoreSession();
+    // keepalive on activity
+    ['click','keydown','mousemove','touchstart'].forEach(ev=>document.addEventListener(ev, touchSession, {passive:true}));
   }
 
   if(document.readyState==='loading') document.addEventListener('DOMContentLoaded', boot); else boot();
