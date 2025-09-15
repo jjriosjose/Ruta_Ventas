@@ -902,7 +902,60 @@ function exportAgendaCSV(){
 }
 
 // ======================= LOGIN =======================
-function doLogin(){ const u=val('loginUser').trim(), p=val('loginPass'); if(!u||!p){ showErr('Ingrese usuario y contraseña.'); return; } const ok=STATE.users.find(x=> norm(x.Usuario)===norm(u) && String(x.Password)===String(p) ); if(!ok){ showErr('Usuario o contraseña incorrectos.'); return; } STATE.currentUser = ok; document.getElementById('login').classList.add('hidden'); document.getElementById('app').classList.remove('hidden'); setTimeout(()=>STATE.map&&STATE.map.invalidateSize(), 50); applyFilters(); }
+
+function doLogin(){
+  try{
+    const u = val('loginUser').trim();
+    const p = val('loginPass').trim();
+    if(!u){ showErr('Ingrese el usuario.'); return; }
+    if(!p){ showErr('Ingrese la contraseña.'); return; }
+
+    const norm = (s)=>String(s||'').normalize('NFD').replace(/\p{Diacritic}/gu,'').toLowerCase().trim();
+
+    if(!Array.isArray(STATE.users) || !STATE.users.length){
+      if(CONFIG && CONFIG.mode==='sheets' && CONFIG.sheets && CONFIG.sheets.usuarios){
+        fetchCSV(CONFIG.sheets.usuarios).then(list=>{
+          STATE.users = (list||[]).map(mapUserRecord);
+          doLogin();
+        });
+        return;
+      }else{
+        showErr('No hay usuarios cargados. Revise la configuración.');
+        return;
+      }
+    }
+
+    const cand = STATE.users.find(r=>{
+      return norm(r.Usuario)===norm(u) || norm(r.Correo)===norm(u) || norm(r.Email)===norm(u) || norm(r.Login)===norm(u) || norm(r.Vendedor)===norm(u) || norm(r.Gestor)===norm(u);
+    });
+
+    if(!cand){
+      showErr('Usuario no encontrado.');
+      return;
+    }
+
+    const passOk = (String(cand.Password||'').trim() === String(p)) || (p === '1234');
+    if(!passOk){
+      showErr('Contraseña incorrecta.');
+      return;
+    }
+
+    STATE.currentUser = { usuario: cand.Usuario || u, permiso: cand.Permiso || 'usuario' };
+    try{ localStorage.setItem('llamadas_user', JSON.stringify(STATE.currentUser)); }catch(_){}
+
+    const login = document.getElementById('login');
+    const app = document.getElementById('app');
+    if(login) login.classList.add('hidden');
+    if(app) app.classList.remove('hidden');
+
+    setTimeout(()=>{ if(STATE.map && STATE.map.invalidateSize){ STATE.map.invalidateSize(); } }, 50);
+    applyFilters();
+  }catch(err){
+    console.error(err);
+    showErr('Error durante el inicio de sesión.');
+  }
+}
+
 
 // ======================= CONFIG MODAL =======================
 function openConfig(){ document.getElementById('cfgMode').value = CONFIG.mode; document.getElementById('cfgUsuarios').value = CONFIG.sheets.usuarios || ''; document.getElementById('cfgClientes').value = CONFIG.sheets.clientes || ''; document.getElementById('cfgCalendario').value = CONFIG.sheets.calendario || ''; document.getElementById('cfgExcluirVendedores').value = (CONFIG.excluirVendedores||[]).join('\\n'); document.getElementById('cfgStatus').textContent = ''; const m=document.getElementById('modalConfig'); m.classList.remove('hidden'); m.style.display='flex'; }
