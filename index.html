@@ -764,7 +764,16 @@ function getVendedorColor(v){ if(!v) return '#9aa3b2'; if(!STATE.colorByVendedor
 function svgPin(color){ const fill=color||'#3b82f6'; const stroke='#08121f'; const svg=`<svg xmlns="http://www.w3.org/2000/svg" width="26" height="38" viewBox="0 0 26 38"><path d="M13 0C7 0 2 5 2 11c0 7.5 9 17 11 19 2-2 11-11.5 11-19C24 5 19 0 13 0z" fill="${fill}" stroke="${stroke}" stroke-width="2"/><circle cx="13" cy="12" r="4.2" fill="#fff" stroke="${stroke}" stroke-width="2"/></svg>`; return 'data:image/svg+xml;base64,'+btoa(svg); }
 function pinIcon(color){ if(!STATE.iconByColor[color]){ STATE.iconByColor[color]=L.icon({iconUrl:svgPin(color), iconSize:[26,38], iconAnchor:[13,36], popupAnchor:[0,-30], className:'vendor-pin'});} return STATE.iconByColor[color]; }
 function renderMap(){
-  initMap(); clearMarkers(); const bounds=[]; let rendered=0;
+  
+  if(!window.__rd_centered_once){
+    window.__rd_centered_once = true;
+    try{
+      if(window.STATE && STATE.map){
+        STATE.map.setView([18.735693,-70.162651], 8);
+      }
+    }catch(_){}
+  }
+initMap(); clearMarkers(); const bounds=[]; let rendered=0;
   STATE.filtered.forEach(x=>{ if(!isFinite(x.lat)||!isFinite(x.lon)) return; const color=getVendedorColor(x.vendedor); const m=L.marker([x.lat,x.lon],{ icon: pinIcon(color) }).addTo(STATE.map);
     m.bindPopup(`<strong>${x.nombre}</strong><div class="muted">Cod ${x.cod} • ${x.empresa||''}</div><div>Semana: ${x.semana} • Día: ${x.dia}</div><div>Vendedor: ${x.vendedor||'-'} • Gestor: ${x.gestor||'-'}</div>`);
     m.on('click',()=>selectCliente(x)); STATE.markers.push(m); bounds.push([x.lat,x.lon]); rendered++; });
@@ -1090,7 +1099,7 @@ document.getElementById('btnCallGuardar').addEventListener('click', saveCallReco
 }
 function fallbackToDemo(){ STATE.users = DEMO.usuarios.map(mapUserRecord); STATE.clientes = DEMO.clientes; STATE.calendario = DEMO.calendario; }
 
-window.addEventListener('DOMContentLoaded', ()=>{ init(); initMap(); });
+window.addEventListener('DOMContentLoaded', ()=>{ init(); /* initMap se activa tras mostrar la app */ });
 </script>
 
 <script>
@@ -1144,7 +1153,16 @@ allCalls = function() {
 // Mapa: centrar y abrir popup del cliente seleccionado
 let markerByCod = {};
 function renderMap(){
-  initMap(); clearMarkers(); markerByCod = {}; const bounds=[]; let rendered=0;
+  
+  if(!window.__rd_centered_once){
+    window.__rd_centered_once = true;
+    try{
+      if(window.STATE && STATE.map){
+        STATE.map.setView([18.735693,-70.162651], 8);
+      }
+    }catch(_){}
+  }
+initMap(); clearMarkers(); markerByCod = {}; const bounds=[]; let rendered=0;
   STATE.filtered.forEach(x=>{ 
     if(!isFinite(x.lat)||!isFinite(x.lon)) return; 
     const color=getVendedorColor(x.vendedor); 
@@ -2782,6 +2800,19 @@ document.addEventListener('click', (ev)=>{
     } else if(id==="app"){
       const ap = document.getElementById("app");
       if(ap) ap.classList.remove("hidden");
+    
+        try{
+          setTimeout(function(){
+            try{
+              if(typeof initMap==='function' && (!window.STATE || !STATE.map)) initMap();
+              if(typeof applyFilters==='function') applyFilters();
+              if(window.STATE && STATE.map){
+                STATE.map.setView([18.735693,-70.162651], 8);
+                STATE.map.invalidateSize();
+              }
+            }catch(_){}
+          }, 80);
+        }catch(_){}
     } else if(id==="screenResumenSem"){
       const rs = document.getElementById("screenResumenSem");
       if(rs) rs.style.display = "";
@@ -5019,7 +5050,20 @@ document.getElementById('rsTabReal').onclick = (e)=>{ e.target.classList.add('ac
         try{
           var lg = document.getElementById('login'); if(lg) lg.style.display='none';
           var ap = document.getElementById('app'); if(ap) ap.classList.remove('hidden');
-        }catch(e){ console.warn(e); }
+        
+            try{
+              setTimeout(function(){
+                try{
+                  if(typeof initMap==='function' && (!window.STATE || !STATE.map)) initMap();
+                  if(typeof applyFilters==='function') applyFilters();
+                  if(window.STATE && STATE.map){
+                    STATE.map.setView([18.735693,-70.162651], 8);
+                    STATE.map.invalidateSize();
+                  }
+                }catch(_){}
+              }, 80);
+            }catch(_){}
+    }catch(e){ console.warn(e); }
       } else {
         alert('Usuario o contraseña inválidos. Tip: demo / 1234');
       }
