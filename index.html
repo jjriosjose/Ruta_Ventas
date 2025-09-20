@@ -1050,7 +1050,7 @@ document.getElementById('btnCallGuardar').addEventListener('click', saveCallReco
 }
 function fallbackToDemo(){ STATE.users = DEMO.usuarios.map(mapUserRecord); STATE.clientes = DEMO.clientes; STATE.calendario = DEMO.calendario; }
 
-window.addEventListener('DOMContentLoaded', ()=>{ init(); initMap(); });
+window.addEventListener('DOMContentLoaded', ()=>{ init(); /* initMap deferred until app is visible */ });
 </script>
 
 <script>
@@ -5081,6 +5081,89 @@ document.getElementById('rsTabReal').onclick = (e)=>{ e.target.classList.add('ac
 
   document.addEventListener('DOMContentLoaded', init);
   window.addEventListener('load', () => setTimeout(applyToExisting, 100));
+})();
+</script>
+
+
+<!-- Performance & Map-Ready Fix -->
+<script>
+(function(){
+  function ensureTileLayer() {
+    try{
+      if(!(window.STATE && STATE.map)) return false;
+      var hasTile = false;
+      if (STATE.map && STATE.map.eachLayer) {
+        STATE.map.eachLayer(function(l){
+          try{
+            if (l && l._url && (''+l._url).indexOf('tile.openstreetmap.org')>=0) { hasTile = true; }
+          }catch(_){}
+        });
+      }
+      if(!hasTile && window.L && STATE.map){
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+          maxZoom: 19,
+          attribution: '&copy; OpenStreetMap'
+        }).addTo(STATE.map);
+      }
+      return true;
+    }catch(e){ return false; }
+  }
+
+  function ensureMapReady(){
+    try{
+      if (typeof initMap === 'function' && (!window.STATE || !STATE.map)) { initMap(); }
+      ensureTileLayer();
+      if (window.STATE && STATE.map){
+        try { STATE.map.setView([18.735693,-70.162651], 8); } catch(_){}
+        try { STATE.map.invalidateSize(); } catch(_){}
+        // second pass after layout settles
+        setTimeout(function(){
+          try { STATE.map.invalidateSize(); } catch(_){}
+          if (typeof applyFilters === 'function') { try { applyFilters(); } catch(_){ } }
+        }, 150);
+      } else {
+        // retry shortly if map isn't ready
+        setTimeout(ensureMapReady, 150);
+      }
+    }catch(_){}
+  }
+
+  // Debounce applyFilters to reduce heavy recomputation
+  (function(){
+    if (typeof window.applyFilters === 'function' && !window.__applyFiltersPatched){
+      var _af = window.applyFilters, t;
+      window.applyFilters = function(){
+        clearTimeout(t);
+        var args = arguments, ctx = this;
+        t = setTimeout(function(){ try{ _af.apply(ctx, args); }catch(_){ } }, 60);
+      };
+      window.__applyFiltersPatched = true;
+    }
+  })();
+
+  // Run after full load and again after showing the app
+  window.addEventListener('load', function(){
+    setTimeout(ensureMapReady, 60);
+    setTimeout(ensureMapReady, 300);
+  });
+
+  // Trigger when #app becomes visible (after login)
+  var ap = document.getElementById('app');
+  if (ap && window.MutationObserver){
+    var mo = new MutationObserver(function(){
+      if (!ap.classList.contains('hidden')) { ensureMapReady(); }
+    });
+    mo.observe(ap, {attributes: true, attributeFilter: ['class']});
+  }
+
+  // Invalidate when #map resizes
+  var mapEl = document.getElementById('map');
+  if (mapEl && window.ResizeObserver){
+    var ro = new ResizeObserver(function(){
+      try { if (window.STATE && STATE.map) STATE.map.invalidateSize(); } catch(_){}
+    });
+    ro.observe(mapEl);
+  }
 })();
 </script>
 
