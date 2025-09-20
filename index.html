@@ -322,15 +322,12 @@ body.show-resumen #screenResumenSem > .card {
         </div>
         <div><label>Resultado</label>
           <select id="callResultado">
-<option value="exitosa">Exitosa</option>
-<option value="venta">Exitosa con Venta</option>
-<option value="captacion">Exitosa – Captación de Cliente</option>
-<option value="seguimiento_recepcion">Exitosa – Seguimiento a recepción de pedido</option>
-<option value="no_contesta">No Contesta</option>
-<option value="ocupado">Ocupado</option>
-<option value="numero_equivocado">Número equivocado</option>
-<option value="rechazada">Rechazada</option>
-<option value="no_compro">No Compró</option>
+<option value="Exitosa">Exitosa</option>
+<option value="Gestión de pedido recibido">Gestión de pedido recibido</option>
+<option value="No contesta">No contesta</option>
+<option value="Ocupado">Ocupado</option>
+<option value="Número equivocado">Número equivocado</option>
+<option value="Rechazada">Rechazada</option>
 </select>
         </div>
         <div><label>Duración (seg.)</label><input id="callDuracion" type="number" min="0" step="1" value="0" /></div>
@@ -349,11 +346,8 @@ body.show-resumen #screenResumenSem > .card {
         <legend class="muted">Cita</legend>
         <div class="grid grid-3">
           <div><label>Tipo</label><select id="callCitaTipo">
-<option value="sin_cita">(sin cita)</option>
-<option value="cita_showroom">Cita Showroom</option>
-<option value="cita_visita">Cita Visita (cliente)</option>
-<option value="cita_seguimiento">Cita Seguimiento</option>
-</select></div>
+            <option value="sin_cita">(sin cita)</option><option value="cita_showroom">Cita Showroom</option><option value="no_cita">No cita</option>
+          </select></div>
           <div><label>Fecha</label><input id="callCitaFecha" type="date" /></div>
           <div><label>Hora</label><input id="callCitaHora" type="time" /></div>
         </div>
@@ -823,7 +817,7 @@ function allCalls(){ let local=[]; try{ local = JSON.parse(localStorage.getItem(
 function openAgenda(){ buildAgendaFilters(); renderAgenda(); const m=document.getElementById('modalAgenda'); m.classList.remove('hidden'); m.style.display='flex'; document.body.classList.add('no-scroll'); }
 function closeAgenda(){ const m=document.getElementById('modalAgenda'); m.classList.add('hidden'); m.style.display='none'; document.body.classList.remove('no-scroll'); }
 function buildAgendaFilters(){
-  const data = allCalls().filter(c => c.cita_tipo && c.cita_tipo !== 'sin_cita');
+  const data = allCalls().filter(c => c.cita_tipo && !['sin_cita','no_cita',''].includes(c.cita_tipo) && c.cita_fecha && c.cita_hora);
   const vends = [...new Set(data.map(x => x.vendedor).filter(Boolean))].sort();
   const ges   = [...new Set(data.map(x => x.gestor_servicio).filter(Boolean))].sort();
   const selV = document.getElementById('agVendedor'); const selG = document.getElementById('agGestor');
@@ -834,7 +828,7 @@ function agendaFilters(){ return { desde:document.getElementById('agDesde').valu
 function renderAgenda(){
   const wrapHoy=document.getElementById('agHoy'), wrapSem=document.getElementById('agSemana'), wrapFut=document.getElementById('agFuturas'); [wrapHoy,wrapSem,wrapFut].forEach(w=>w.innerHTML='');
   const {desde,hasta,vendedor,gestor,status} = agendaFilters(); const ds=desde?new Date(desde+'T00:00:00'):null; const hs=hasta?new Date(hasta+'T23:59:59'):null;
-  const items = allCalls().filter(r=>{ if(!r.cita_tipo || ['sin_cita','no_cita',''].includes(r.cita_tipo)) return false; if(!r.cita_fecha || !r.cita_hora) return false; return true; }) return false; const f=r.cita_fecha?new Date(r.cita_fecha+'T'+(r.cita_hora||'00:00')):null; if(ds && f && f<ds) return false; if(hs && f && f>hs) return false; if(vendedor && r.vendedor!==vendedor) return false; if(gestor && r.gestor_servicio!==gestor) return false; if(status && (r.estatus_visita||'programada')!==status) return false; return true; });
+  const items = allCalls().filter(r=>{ if(!r.cita_tipo || r.cita_tipo==='sin_cita' || r.cita_tipo==='no_cita' || !r.cita_fecha || !r.cita_hora) return false; const f=r.cita_fecha?new Date(r.cita_fecha+'T'+(r.cita_hora||'00:00')):null; if(ds && f && f<ds) return false; if(hs && f && f>hs) return false; if(vendedor && r.vendedor!==vendedor) return false; if(gestor && r.gestor_servicio!==gestor) return false; if(status){ if((r.estatus_visita||'programada')!==status) return false; } else { const s=(r.estatus_visita||'programada'); if(!(s==='programada'||s==='reprogramada')) return false; } return true; });
   const today=new Date(); today.setHours(0,0,0,0); const endWeek=new Date(today); endWeek.setDate(today.getDate() + (7 - today.getDay()));
   items.forEach(r=>{ const f=r.cita_fecha?new Date(r.cita_fecha+'T'+(r.cita_hora||'00:00')):null; const card=agendaCard(r); if(!f || f<today){ wrapSem.appendChild(card); } else if(f.toDateString()===today.toDateString()){ wrapHoy.appendChild(card); } else if(f<=endWeek){ wrapSem.appendChild(card); } else { wrapFut.appendChild(card); } });
 }
@@ -894,7 +888,7 @@ function updateCallRecord(id, patch){
 }
 function exportAgendaCSV(){
   const {desde,hasta,vendedor,gestor,status} = agendaFilters(); const ds=desde?new Date(desde+'T00:00:00'):null; const hs=hasta?new Date(hasta+'T23:59:59'):null;
-  const data = allCalls().filter(r=>{ if(!r.cita_tipo || ['sin_cita','no_cita',''].includes(r.cita_tipo)) return false; if(!r.cita_fecha || !r.cita_hora) return false; return true; }).filter(r=>{ const f=r.cita_fecha?new Date(r.cita_fecha+'T'+(r.cita_hora||'00:00')):null; if(ds && f && f<ds) return false; if(hs && f && f>hs) return false; if(vendedor && r.vendedor!==vendedor) return false; if(gestor && r.gestor_servicio!==gestor) return false; if(status && (r.estatus_visita||'programada')!==status) return false; return true; });
+  const data = allCalls().filter(r=> r.cita_tipo && r.cita_tipo!=='sin_cita').filter(r=>{ const f=r.cita_fecha?new Date(r.cita_fecha+'T'+(r.cita_hora||'00:00')):null; if(ds && f && f<ds) return false; if(hs && f && f>hs) return false; if(vendedor && r.vendedor!==vendedor) return false; if(gestor && r.gestor_servicio!==gestor) return false; if(status){ if((r.estatus_visita||'programada')!==status) return false; } else { const s=(r.estatus_visita||'programada'); if(!(s==='programada'||s==='reprogramada')) return false; } return true; });
   const headers=['Cliente','Cod','Vendedor','Gestor','Fecha','Hora','Estatus','Tipo','Obs']; const rows=data.map(r=>[r.cliente||'',r.cod_empresa||'',r.vendedor||'',r.gestor_servicio||'',r.cita_fecha||'',r.cita_hora||'',r.estatus_visita||'programada',r.cita_tipo||'',r.observaciones||'']); const csv=[headers.join(','),...rows.map(r=>r.map(csvEscape).join(','))].join('\\n'); const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv'})); a.download='agenda.csv'; a.click(); URL.revokeObjectURL(a.href);
 }
 
@@ -929,7 +923,7 @@ function closeGvReporte(){
   document.body.classList.remove('no-scroll');
 }
 function buildGvFilters(){
-  const data = allCalls().filter(c => c.cita_tipo && c.cita_tipo !== 'sin_cita');
+  const data = allCalls().filter(c => c.cita_tipo && !['sin_cita','no_cita',''].includes(c.cita_tipo) && c.cita_fecha && c.cita_hora);
   const vends = [...new Set(data.map(x => x.vendedor).filter(Boolean))].sort();
   const ges   = [...new Set(data.map(x => x.gestor_servicio).filter(Boolean))].sort();
   const selV = document.getElementById('gvVendedor');
@@ -964,7 +958,7 @@ function gvDataFiltered(){
       if(hs && f && f>hs) return false;
       if(vendedor && r.vendedor!==vendedor) return false;
       if(gestor && r.gestor_servicio!==gestor) return false;
-      if(status && (r.estatus_visita||'programada')!==status) return false;
+      if(status){ if((r.estatus_visita||'programada')!==status) return false; } else { const s=(r.estatus_visita||'programada'); if(!(s==='programada'||s==='reprogramada')) return false; }
       return true;
     });
 }
@@ -4911,25 +4905,15 @@ document.getElementById('rsTabReal').onclick = (e)=>{ e.target.classList.add('ac
     return ['1','2','3','4'].includes(String(v));
   }
   function validCitaTipo(){ 
-    // (sin cita) es válido; solo es obligatorio cuando se elige una cita específica
-    return true; 
-  }).value || '';
+    var v = (document.getElementById('callCitaTipo')||{}).value || '';
     return v && v !== 'sin_cita';
   }
   function validCitaFecha(){ 
-    var t = (document.getElementById('callCitaTipo')||{}).value || '';
     var v = (document.getElementById('callCitaFecha')||{}).value || '';
-    if(!t || t==='sin_cita' || t==='no_cita') return true;
-    return !!v;
-  }).value || '';
     return !!v;
   }
   function validCitaHora(){ 
-    var t = (document.getElementById('callCitaTipo')||{}).value || '';
     var v = (document.getElementById('callCitaHora')||{}).value || '';
-    if(!t || t==='sin_cita' || t==='no_cita') return true;
-    return !!v;
-  }).value || '';
     return !!v;
   }
 
