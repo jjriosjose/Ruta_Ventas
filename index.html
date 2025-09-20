@@ -370,13 +370,8 @@ body.show-resumen #screenResumenSem > .card {
         <div><label>Vendedor</label><input id="repVendedor" type="text" placeholder="(todos)"/></div>
         <div><label>Gestor</label><input id="repGestor" type="text" placeholder="(todos)"/></div>
         <div><label>Resultado</label>
-          <select id="repResultado"><option value="">(todos)</option>
-<option value="Exitosa con Cita">Exitosa con Cita</option>
-<option value="Exitosa Con Venta">Exitosa Con Venta</option>
-<option value="Exitosa seguimiento a recepción de pedido">Exitosa seguimiento a recepción de pedido</option>
-<option value="No Contesta">No Contesta</option>
-<option value="No Compro">No Compro</option>
-<option value="Captacion de Cliente">Captacion de Cliente</option>
+          <select id="repResultado">
+<option value="">(todos)</option><option>Exitosa con Cita</option><option>Exitosa Con Venta</option><option>Exitosa seguimiento a recepción de pedido</option><option>No Contesta</option><option>No Compro</option><option>Captacion de Cliente</option>
 </select>
         </div>
         <div><label>&nbsp;</label><button id="repExport" class="btn">⬇ Exportar CSV</button></div>
@@ -508,7 +503,7 @@ body.show-resumen #screenResumenSem > .card {
         </div>
       </div>
 
-      <div class="toolbar" style="gap:12px; flex-wrap:wrap; margin-top:6px;">
+      <div class="toolbar" style="gap:12px; flex-wrap:wrap; margin-top:6px;"><button id="rwToggle" class="btn btn-soft">Ocultar</button>
         <span class="chip">A realizar: <strong id="rwPlan">0</strong></span>
         <span class="chip">Realizadas: <strong id="rwDone">0</strong></span>
         <span class="chip">% Cobertura: <strong id="rwCov">0%</strong></span>
@@ -525,6 +520,12 @@ body.show-resumen #screenResumenSem > .card {
     <div class="card" style="text-align:center; padding:14px 10px;">
       <div class="muted">Realizadas (Llamadas)</div>
       <div id="kpiDone" style="font-size:28px; font-weight:800;">0</div>
+    </div>
+  </div>
+  <div class="col">
+    <div class="card" style="text-align:center; padding:14px 10px;">
+      <div class="muted">Llamadas (Total)</div>
+      <div id="kpiCalls" style="font-size:28px; font-weight:800;">0</div>
     </div>
   </div>
   <div class="col">
@@ -821,7 +822,7 @@ function allCalls(){ let local=[]; try{ local = JSON.parse(localStorage.getItem(
 function openAgenda(){ buildAgendaFilters(); renderAgenda(); const m=document.getElementById('modalAgenda'); m.classList.remove('hidden'); m.style.display='flex'; document.body.classList.add('no-scroll'); }
 function closeAgenda(){ const m=document.getElementById('modalAgenda'); m.classList.add('hidden'); m.style.display='none'; document.body.classList.remove('no-scroll'); }
 function buildAgendaFilters(){
-  const data = allCalls().filter(c => c.cita_tipo && !['sin_cita','no_cita',''].includes(c.cita_tipo) && c.cita_fecha && c.cita_hora);
+  const data = allCalls().filter(c => c.cita_tipo && c.cita_tipo !== 'sin_cita');
   const vends = [...new Set(data.map(x => x.vendedor).filter(Boolean))].sort();
   const ges   = [...new Set(data.map(x => x.gestor_servicio).filter(Boolean))].sort();
   const selV = document.getElementById('agVendedor'); const selG = document.getElementById('agGestor');
@@ -832,7 +833,7 @@ function agendaFilters(){ return { desde:document.getElementById('agDesde').valu
 function renderAgenda(){
   const wrapHoy=document.getElementById('agHoy'), wrapSem=document.getElementById('agSemana'), wrapFut=document.getElementById('agFuturas'); [wrapHoy,wrapSem,wrapFut].forEach(w=>w.innerHTML='');
   const {desde,hasta,vendedor,gestor,status} = agendaFilters(); const ds=desde?new Date(desde+'T00:00:00'):null; const hs=hasta?new Date(hasta+'T23:59:59'):null;
-  const items = allCalls().filter(r=>{ if(!r.cita_tipo || r.cita_tipo==='sin_cita' || r.cita_tipo==='no_cita' || !r.cita_fecha || !r.cita_hora) return false; const f=r.cita_fecha?new Date(r.cita_fecha+'T'+(r.cita_hora||'00:00')):null; if(ds && f && f<ds) return false; if(hs && f && f>hs) return false; if(vendedor && r.vendedor!==vendedor) return false; if(gestor && r.gestor_servicio!==gestor) return false; if(status){ if((r.estatus_visita||'programada')!==status) return false; } else { const s=(r.estatus_visita||'programada'); if(!(s==='programada'||s==='reprogramada')) return false; } return true; });
+  const items = allCalls().filter(r=>{ if(!r.cita_tipo || r.cita_tipo==='sin_cita' || r.cita_tipo==='no_cita' || !r.cita_fecha || !r.cita_hora) return false; const f=r.cita_fecha?new Date(r.cita_fecha+'T'+(r.cita_hora||'00:00')):null; if(ds && f && f<ds) return false; if(hs && f && f>hs) return false; if(vendedor && r.vendedor!==vendedor) return false; if(gestor && r.gestor_servicio!==gestor) return false; if(status && (r.estatus_visita||'programada')!==status) return false; return true; });
   const today=new Date(); today.setHours(0,0,0,0); const endWeek=new Date(today); endWeek.setDate(today.getDate() + (7 - today.getDay()));
   items.forEach(r=>{ const f=r.cita_fecha?new Date(r.cita_fecha+'T'+(r.cita_hora||'00:00')):null; const card=agendaCard(r); if(!f || f<today){ wrapSem.appendChild(card); } else if(f.toDateString()===today.toDateString()){ wrapHoy.appendChild(card); } else if(f<=endWeek){ wrapSem.appendChild(card); } else { wrapFut.appendChild(card); } });
 }
@@ -892,7 +893,7 @@ function updateCallRecord(id, patch){
 }
 function exportAgendaCSV(){
   const {desde,hasta,vendedor,gestor,status} = agendaFilters(); const ds=desde?new Date(desde+'T00:00:00'):null; const hs=hasta?new Date(hasta+'T23:59:59'):null;
-  const data = allCalls().filter(r=> r.cita_tipo && r.cita_tipo!=='sin_cita').filter(r=>{ const f=r.cita_fecha?new Date(r.cita_fecha+'T'+(r.cita_hora||'00:00')):null; if(ds && f && f<ds) return false; if(hs && f && f>hs) return false; if(vendedor && r.vendedor!==vendedor) return false; if(gestor && r.gestor_servicio!==gestor) return false; if(status){ if((r.estatus_visita||'programada')!==status) return false; } else { const s=(r.estatus_visita||'programada'); if(!(s==='programada'||s==='reprogramada')) return false; } return true; });
+  const data = allCalls().filter(r=> r.cita_tipo && r.cita_tipo!=='sin_cita').filter(r=>{ const f=r.cita_fecha?new Date(r.cita_fecha+'T'+(r.cita_hora||'00:00')):null; if(ds && f && f<ds) return false; if(hs && f && f>hs) return false; if(vendedor && r.vendedor!==vendedor) return false; if(gestor && r.gestor_servicio!==gestor) return false; if(status && (r.estatus_visita||'programada')!==status) return false; return true; });
   const headers=['Cliente','Cod','Vendedor','Gestor','Fecha','Hora','Estatus','Tipo','Obs']; const rows=data.map(r=>[r.cliente||'',r.cod_empresa||'',r.vendedor||'',r.gestor_servicio||'',r.cita_fecha||'',r.cita_hora||'',r.estatus_visita||'programada',r.cita_tipo||'',r.observaciones||'']); const csv=[headers.join(','),...rows.map(r=>r.map(csvEscape).join(','))].join('\\n'); const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv'})); a.download='agenda.csv'; a.click(); URL.revokeObjectURL(a.href);
 }
 
@@ -927,7 +928,7 @@ function closeGvReporte(){
   document.body.classList.remove('no-scroll');
 }
 function buildGvFilters(){
-  const data = allCalls().filter(c => c.cita_tipo && !['sin_cita','no_cita',''].includes(c.cita_tipo) && c.cita_fecha && c.cita_hora);
+  const data = allCalls().filter(c => c.cita_tipo && c.cita_tipo !== 'sin_cita');
   const vends = [...new Set(data.map(x => x.vendedor).filter(Boolean))].sort();
   const ges   = [...new Set(data.map(x => x.gestor_servicio).filter(Boolean))].sort();
   const selV = document.getElementById('gvVendedor');
@@ -962,7 +963,7 @@ function gvDataFiltered(){
       if(hs && f && f>hs) return false;
       if(vendedor && r.vendedor!==vendedor) return false;
       if(gestor && r.gestor_servicio!==gestor) return false;
-      if(status){ if((r.estatus_visita||'programada')!==status) return false; } else { const s=(r.estatus_visita||'programada'); if(!(s==='programada'||s==='reprogramada')) return false; }
+      if(status && (r.estatus_visita||'programada')!==status) return false;
       return true;
     });
 }
@@ -1050,7 +1051,7 @@ document.getElementById('btnCallGuardar').addEventListener('click', saveCallReco
 }
 function fallbackToDemo(){ STATE.users = DEMO.usuarios.map(mapUserRecord); STATE.clientes = DEMO.clientes; STATE.calendario = DEMO.calendario; }
 
-window.addEventListener('DOMContentLoaded', ()=>{ init(); /* initMap deferred until app is visible */ });
+window.addEventListener('DOMContentLoaded', ()=>{ init(); initMap(); });
 </script>
 
 <script>
@@ -2356,7 +2357,7 @@ document.addEventListener('click', (ev)=>{
     wrap.innerHTML = `
       <div class="dlp-row">
         <h3 class="dlp-title">Detalle de llamadas — Clientes</h3>
-        <div class="dlp-actions">
+        <div class="dlp-actions"><button class="dlp-btn btn-soft" id="dlpToggle">Ocultar</button>
           <button class="dlp-btn" id="dlpExportActive">Exportar Excel</button>
           <button class="dlp-btn" id="dlpExportBoth">Exportar Excel — Todo</button>
         </div>
@@ -3037,15 +3038,31 @@ document.addEventListener('click', (ev)=>{
       g.plan += 1;
     });
 
-    doneRows.forEach(c=>{
-      const wk = getCallWeek(c) || '';
-      const ges = getCallGestor(c) || '';
-      const g = aggSet(ges, wk);
-      g.done += 1;
-      const d = getCallFecha(c);
-      if(d && (!g.last || d>g.last)) g.last = d;
-    });
-
+    // Count unique customers per Gestor x Semana
+    (function(){
+      const uniq = new Map(); // key = gestor__semana -> Set(cod_empresa)
+      let llamadasTotales = 0;
+      doneRows.forEach(c=>{
+        const wk = getCallWeek(c) || '';
+        const ges = getCallGestor(c) || '';
+        const cod = String(c.cod_empresa || c['Cod Empresa'] || c.cod || c.codigo || c.Cod || '').trim() || String(c.cliente||'').trim();
+        const k = ges + '__' + wk;
+        if(!uniq.has(k)) uniq.set(k, new Set());
+        uniq.get(k).add(cod);
+        const g = aggSet(ges, wk);
+        const d = getCallFecha(c);
+        if(d && (!g.last || d>g.last)) g.last = d;
+        llamadasTotales += 1;
+      });
+      // write totals as unique sizes
+      uniq.forEach((set,k)=>{
+        const [ges, wk] = k.split('__');
+        const g = aggSet(ges, wk);
+        g.done = set.size;
+      });
+      // expose total raw calls for optional KPI
+      window.__resumen_total_calls = llamadasTotales;
+    })();
     const full = ensureFourWeeks(groups);
     const rows = Array.from(full.values()).sort((a,b)=>{
       if(a.gestor === b.gestor){
@@ -3070,6 +3087,7 @@ document.addEventListener('click', (ev)=>{
     if(rwCov)  rwCov.textContent  = cov + '%';
     var k3=document.getElementById('kpiCov'); if(k3) k3.textContent=cov + '%';
     const kpiCov=document.getElementById('kpiCov'); if(kpiCov) kpiCov.textContent = cov + '%';
+    var k4=document.getElementById('kpiCalls'); if(k4) k4.textContent = String(window.__resumen_total_calls||0);
 
     renderBreakdown(rows);
     const tb = document.querySelector('#rwTbl tbody');
@@ -5085,85 +5103,23 @@ document.getElementById('rsTabReal').onclick = (e)=>{ e.target.classList.add('ac
 </script>
 
 
-<!-- Performance & Map-Ready Fix -->
 <script>
 (function(){
-  function ensureTileLayer() {
-    try{
-      if(!(window.STATE && STATE.map)) return false;
-      var hasTile = false;
-      if (STATE.map && STATE.map.eachLayer) {
-        STATE.map.eachLayer(function(l){
-          try{
-            if (l && l._url && (''+l._url).indexOf('tile.openstreetmap.org')>=0) { hasTile = true; }
-          }catch(_){}
-        });
-      }
-      if(!hasTile && window.L && STATE.map){
-        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-          maxZoom: 19,
-          attribution: '&copy; OpenStreetMap'
-        }).addTo(STATE.map);
-      }
-      return true;
-    }catch(e){ return false; }
-  }
-
-  function ensureMapReady(){
-    try{
-      if (typeof initMap === 'function' && (!window.STATE || !STATE.map)) { initMap(); }
-      ensureTileLayer();
-      if (window.STATE && STATE.map){
-        try { STATE.map.setView([18.735693,-70.162651], 8); } catch(_){}
-        try { STATE.map.invalidateSize(); } catch(_){}
-        // second pass after layout settles
-        setTimeout(function(){
-          try { STATE.map.invalidateSize(); } catch(_){}
-          if (typeof applyFilters === 'function') { try { applyFilters(); } catch(_){ } }
-        }, 150);
-      } else {
-        // retry shortly if map isn't ready
-        setTimeout(ensureMapReady, 150);
-      }
-    }catch(_){}
-  }
-
-  // Debounce applyFilters to reduce heavy recomputation
-  (function(){
-    if (typeof window.applyFilters === 'function' && !window.__applyFiltersPatched){
-      var _af = window.applyFilters, t;
-      window.applyFilters = function(){
-        clearTimeout(t);
-        var args = arguments, ctx = this;
-        t = setTimeout(function(){ try{ _af.apply(ctx, args); }catch(_){ } }, 60);
-      };
-      window.__applyFiltersPatched = true;
+  function toggleDisplay(el){ if(!el) return; el.style.display = (el.style.display==='none' ? '' : 'none'); }
+  document.addEventListener('click', function(ev){
+    if(ev.target && ev.target.id === 'dlpToggle'){
+      var wrap = document.getElementById('dlpTableWrap') || document.querySelector('.dlp-card');
+      toggleDisplay(wrap);
+      ev.target.textContent = (wrap && wrap.style.display==='none') ? 'Mostrar' : 'Ocultar';
     }
-  })();
-
-  // Run after full load and again after showing the app
-  window.addEventListener('load', function(){
-    setTimeout(ensureMapReady, 60);
-    setTimeout(ensureMapReady, 300);
-  });
-
-  // Trigger when #app becomes visible (after login)
-  var ap = document.getElementById('app');
-  if (ap && window.MutationObserver){
-    var mo = new MutationObserver(function(){
-      if (!ap.classList.contains('hidden')) { ensureMapReady(); }
-    });
-    mo.observe(ap, {attributes: true, attributeFilter: ['class']});
-  }
-
-  // Invalidate when #map resizes
-  var mapEl = document.getElementById('map');
-  if (mapEl && window.ResizeObserver){
-    var ro = new ResizeObserver(function(){
-      try { if (window.STATE && STATE.map) STATE.map.invalidateSize(); } catch(_){}
-    });
-    ro.observe(mapEl);
-  }
+    if(ev.target && ev.target.id === 'rwToggle'){
+      var kpis = document.getElementById('rwKpis');
+      var tb   = document.getElementById('rwTbl') ? document.getElementById('rwTbl').closest('.card') || document.getElementById('rwTbl') : null;
+      var br   = document.getElementById('rwBreakdown');
+      toggleDisplay(kpis); toggleDisplay(tb); toggleDisplay(br);
+      ev.target.textContent = ( (kpis && kpis.style.display==='none') ? 'Mostrar' : 'Ocultar' );
+    }
+  }, true);
 })();
 </script>
 
