@@ -2621,7 +2621,7 @@ document.addEventListener('click', (ev)=>{
           const sema = r['SEMANA']||r['Semana']||r['semana']||'';
           const col = elements.panel.querySelector('#dlpCalCol-'+(cols.includes(dia)?dia:'LUNES'));
           const card = document.createElement('div'); card.className='kcard';
-          const _cc = (window._REALIZADAS_CLIENTES||new Set());
+          const _cc = (window.getRealizadasSet ? window.getRealizadasSet() : (window._REALIZADAS_CLIENTES||new Set()));
           const _status = _cc.has((cli||'').toLowerCase()) ? 'ok' : 'miss';
           card.innerHTML = '<div class="khead"><span class="cal-dot '+_status+'"></span>'+(cli||'')+'</div>' +
                            '<div class="kmeta">'+(cod||'')+' • '+vend+' • '+ges+'</div>' +
@@ -2636,7 +2636,7 @@ document.addEventListener('click', (ev)=>{
     }else{
 
       const data = buildRealizadas();
-      try { window._REALIZADAS_CLIENTES = new Set(data.map(o => (o['Cliente']||'').toString().trim().toLowerCase())); } catch (e) { window._REALIZADAS_CLIENTES = new Set(); }
+      try { window._REALIZADAS_CLIENTES = new Set(data.map(o => (o['Cliente']||'').toString().trim().toLowerCase())); document.dispatchEvent(new CustomEvent('realizadas:update',{detail:{count:window._REALIZADAS_CLIENTES.size}})); } catch (e) { window._REALIZADAS_CLIENTES = new Set(); }
       const headers = ['Cliente','Vendedor','Gestor','Realizadas','Última llamada'];
       setTable(headers, data);
       elements.btnActive.dataset.sheet = 'Realizadas';
@@ -5270,6 +5270,36 @@ document.getElementById('rsTabReal').onclick = (e)=>{ e.target.classList.add('ac
 
 </body>
 </html>
+
+<script>
+// -- Semáforo: fuente única de "realizadas" (reporte si existe; si no, todas las llamadas)
+(function(){
+  function _collectFromReporte(){
+    try{
+      if (Array.isArray(window.__repRows__) && window.__repRows__.length){
+        return new Set(window.__repRows__.map(o => (o['Cliente']||'').toString().trim().toLowerCase()));
+      }
+    }catch(_){}
+    return null;
+  }
+  function _collectFromCalls(){
+    try{
+      const all = (window.loadAllCallRecords ? window.loadAllCallRecords() : []);
+      return new Set(all.map(r => (r.cliente||'').toString().trim().toLowerCase()));
+    }catch(_){ return new Set(); }
+  }
+  window.getRealizadasSet = function(){
+    return _collectFromReporte() || _collectFromCalls();
+  };
+  // Prime on load
+  document.addEventListener('DOMContentLoaded', function(){
+    try{ window._REALIZADAS_CLIENTES = getRealizadasSet(); }catch(_){}
+  });
+  // If any component signals updates, refresh the set
+  document.addEventListener('realizadas:saved', function(){ try{ window._REALIZADAS_CLIENTES = getRealizadasSet(); }catch(_){} });
+  document.addEventListener('realizadas:update', function(){ try{ window._REALIZADAS_CLIENTES = getRealizadasSet(); }catch(_){} });
+})();
+</script>
 <!-- Performance & Map-Ready Fix -->
 <script>
 (function(){
