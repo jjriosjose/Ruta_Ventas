@@ -2621,8 +2621,9 @@ document.addEventListener('click', (ev)=>{
           const sema = r['SEMANA']||r['Semana']||r['semana']||'';
           const col = elements.panel.querySelector('#dlpCalCol-'+(cols.includes(dia)?dia:'LUNES'));
           const card = document.createElement('div'); card.className='kcard';
-          const _cc = (window.getRealizadasSet ? window.getRealizadasSet() : (window._REALIZADAS_CLIENTES||new Set()));
-          const _status = _cc.has((cli||'').toLowerCase()) ? 'ok' : 'miss';
+          const _rk = (window.getRealizadasKeySet ? window.getRealizadasKeySet() : (window._REALIZADAS_KEYS||new Set()));
+          const _key = (String((cli||'')).toLowerCase().trim() + '|' + String(sema||'').trim());
+          const _status = _rk.has(_key) ? 'ok' : 'miss';
           card.innerHTML = '<div class="khead"><span class="cal-dot '+_status+'"></span>'+(cli||'')+'</div>' +
                            '<div class="kmeta">'+(cod||'')+' • '+vend+' • '+ges+'</div>' +
                            '<div class="muted" style="margin-top:6px;">Semana '+sema+' — '+dia+'</div>';
@@ -2636,7 +2637,7 @@ document.addEventListener('click', (ev)=>{
     }else{
 
       const data = buildRealizadas();
-      try { window._REALIZADAS_CLIENTES = new Set(data.map(o => (o['Cliente']||'').toString().trim().toLowerCase())); document.dispatchEvent(new CustomEvent('realizadas:update',{detail:{count:window._REALIZADAS_CLIENTES.size}})); } catch (e) { window._REALIZADAS_CLIENTES = new Set(); }
+      try { window._REALIZADAS_CLIENTES = new Set(data.map(o => (o['Cliente']||'').toString().trim().toLowerCase())); document.dispatchEvent(new CustomEvent('realizadas:update',{detail:{legacy:true}})); } catch (e) { window._REALIZADAS_CLIENTES = new Set(); }
       const headers = ['Cliente','Vendedor','Gestor','Realizadas','Última llamada'];
       setTable(headers, data);
       elements.btnActive.dataset.sheet = 'Realizadas';
@@ -4729,6 +4730,13 @@ document.getElementById('rsTabReal').onclick = (e)=>{ e.target.classList.add('ac
         }
       });
       window.__repRows__ = out;
+      try{
+        window._REALIZADAS_KEYS = new Set(out.map(function(r){ 
+          var sem = (window.RZ && RZ.getSemanaFromRow) ? RZ.getSemanaFromRow(r) : (r.NSEMANA||r['N Semana']||r.nsemana||r.semana||r.Semana);
+          return (String((r['Cliente']||r.Cliente||'')).trim().toLowerCase() + '|' + String(sem||'').trim());
+        }));
+        document.dispatchEvent(new CustomEvent('realizadas:update',{detail:{count:window._REALIZADAS_KEYS.size}}));
+      }catch(_){ window._REALIZADAS_KEYS = new Set(); }
     }catch(e){ console.error('renderReporte (patched) error', e); }
   };
 
@@ -5272,34 +5280,62 @@ document.getElementById('rsTabReal').onclick = (e)=>{ e.target.classList.add('ac
 </html>
 
 <script>
-// -- Semáforo: fuente única de "realizadas" (reporte si existe; si no, todas las llamadas)
 (function(){
-  function _collectFromReporte(){
+  function normCli(v){ return (v||'').toString().trim().toLowerCase(); }
+  function key(cli, sem){ return normCli(cli) + '|' + String(sem||'').trim(); }
+  function getSemanaFromRow(row){
+    try { return (window.RZ && typeof RZ.getSemanaFromRow==='function') ? RZ.getSemanaFromRow(row) : (row.NSEMANA||row['N Semana']||row.nsemana||row.semana||row.Semana); } catch(_){ return row && (row.NSEMANA||row['N Semana']||row.nsemana||row.semana||row.Semana); }
+  }
+  function parseSemanaFromCall(call){
     try{
-      if (Array.isArray(window.__repRows__) && window.__repRows__.length){
-        return new Set(window.__repRows__.map(o => (o['Cliente']||'').toString().trim().toLowerCase()));
+      if (call.nsemana!=null && call.nsemana!=='') return Number(call.nsemana);
+      var fh = call.fecha_hora || call.fechaHora || call['fecha_hora'] || call['FechaHora'] || call['Fecha y hora'] || call['Fecha'] || call['fecha'];
+      if (window.RZ && typeof RZ.parseDateLoose==='function' && typeof RZ.weekOfMonth14==='function'){
+        var d = RZ.parseDateLoose(fh);
+        return RZ.weekOfMonth14(d);
+      }
+      return null;
+    }catch(_){ return null; }
+  }
+
+  function collectKeysFromReporte(){
+    try{
+      var rows = (window.__repRows__||[]);
+      if (Array.isArray(rows) && rows.length){
+        var s = new Set();
+        rows.forEach(function(r){
+          var sem = getSemanaFromRow(r);
+          s.add(key(r['Cliente']||r.Cliente, sem));
+        });
+        return s;
       }
     }catch(_){}
     return null;
   }
-  function _collectFromCalls(){
+  function collectKeysFromCalls(){
     try{
-      const all = (window.loadAllCallRecords ? window.loadAllCallRecords() : []);
-      return new Set(all.map(r => (r.cliente||'').toString().trim().toLowerCase()));
+      var calls = (window.loadAllCallRecords ? window.loadAllCallRecords() : []);
+      var s = new Set();
+      calls.forEach(function(c){
+        var sem = parseSemanaFromCall(c);
+        s.add(key(c.cliente||c.Cliente, sem));
+      });
+      return s;
     }catch(_){ return new Set(); }
   }
-  window.getRealizadasSet = function(){
-    return _collectFromReporte() || _collectFromCalls();
+
+  window.getRealizadasKeySet = function(){
+    return collectKeysFromReporte() || collectKeysFromCalls();
   };
-  // Prime on load
+
   document.addEventListener('DOMContentLoaded', function(){
-    try{ window._REALIZADAS_CLIENTES = getRealizadasSet(); }catch(_){}
+    try{ window._REALIZADAS_KEYS = getRealizadasKeySet(); }catch(_){ window._REALIZADAS_KEYS = new Set(); }
   });
-  // If any component signals updates, refresh the set
-  document.addEventListener('realizadas:saved', function(){ try{ window._REALIZADAS_CLIENTES = getRealizadasSet(); }catch(_){} });
-  document.addEventListener('realizadas:update', function(){ try{ window._REALIZADAS_CLIENTES = getRealizadasSet(); }catch(_){} });
+  document.addEventListener('realizadas:saved', function(){ try{ window._REALIZADAS_KEYS = getRealizadasKeySet(); }catch(_){} });
+  document.addEventListener('realizadas:update', function(){ try{ window._REALIZADAS_KEYS = getRealizadasKeySet(); }catch(_){ } });
 })();
 </script>
+
 <!-- Performance & Map-Ready Fix -->
 <script>
 (function(){
