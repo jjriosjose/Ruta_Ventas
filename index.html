@@ -1469,24 +1469,55 @@ function __buildPlanIndex(baseRows){
 
 // Construye índice de realizadas desde registros de llamadas (localStorage + STATE.calls)
 function __toDate(s){ const d = new Date(s); return isNaN(d)? null : d; }
+
 function __buildDoneIndex(allCalls, dateFrom, dateTo){
   const from = dateFrom ? new Date(dateFrom+'T00:00:00') : null;
   const to   = dateTo   ? new Date(dateTo+'T23:59:59')   : null;
   const map = new Map();
+  const seen = new Map(); // key -> Set(clientes) para evitar doble conteo
   for(const r of (allCalls||[])){
-    const d = __toDate(r.fecha_hora); if(!d) continue;
-    if(from && d < from) continue; if(to && d > to) continue;
+    // Fecha
+    const d = (window.RZ && RZ.parseDateLoose) ? RZ.parseDateLoose(r.fecha_hora) : new Date(r.fecha_hora);
+    if(!d || isNaN(d)) continue;
+    if(from && d < from) continue;
+    if(to && d > to) continue;
+
+    // Gestor
     const gestor = (r.gestor_servicio||'').trim();
-    const dia = __normDia(d.toLocaleDateString('es-ES',{ weekday:'long' }));
-    const sem = ''; // Si se desea cruzar por semana planificada, dejar vacío o parametrizar
+
+    // Día (normalizado)
+    const dia = (function(){
+      try{ return __normDia(d.toLocaleDateString('es-ES',{ weekday:'long' })); }catch(_){ return __normDia(r.dia||''); }
+    })();
+
+    // Semana: prioriza campo propio si existe, si no calcula con weekOfMonth14
+    let sem = '';
+    if (r.nsemana !== undefined && r.nsemana !== null && String(r.nsemana).trim()!==''){
+      sem = String(r.nsemana).trim();
+    } else if (window.RZ && typeof RZ.weekOfMonth14==='function'){
+      sem = String(RZ.weekOfMonth14(d));
+    } else {
+      // fallback por si acaso
+      const day = d.getDate(); sem = String(day<=7?1: day<=14?2: day<=21?3:4);
+    }
+
     const key = gestor+'||'+sem+'||'+dia;
     const it = map.get(key) || { gestor, semana: sem, dia, realizadas:0, last:null };
-    it.realizadas += 1;
-    it.last = (!it.last || (__toDate(it.last) < d)) ? r.fecha_hora : it.last;
+    // Conteo por cliente único
+    const cli = (r.cliente||'').toString().trim().toLowerCase();
+    const set = seen.get(key) || new Set();
+    if(!set.has(cli)){
+      it.realizadas += 1;
+      set.add(cli);
+      seen.set(key,set);
+    }
+    // Última llamada
+    it.last = (!it.last || (new Date(it.last) < d)) ? (r.fecha_hora || d.toISOString()) : it.last;
     map.set(key, it);
   }
   return map;
 }
+
 
 // Render del Resumen
 function __renderRepResumen(){
@@ -2621,9 +2652,8 @@ document.addEventListener('click', (ev)=>{
           const sema = r['SEMANA']||r['Semana']||r['semana']||'';
           const col = elements.panel.querySelector('#dlpCalCol-'+(cols.includes(dia)?dia:'LUNES'));
           const card = document.createElement('div'); card.className='kcard';
-          const _rk = (window.getRealizadasKeySet ? window.getRealizadasKeySet() : (window._REALIZADAS_KEYS||new Set()));
-          const _key = (String((cli||'')).toLowerCase().trim() + '|' + String(sema||'').trim());
-          const _status = _rk.has(_key) ? 'ok' : 'miss';
+          const _cc = (window._REALIZADAS_CLIENTES||new Set());
+          const _status = _cc.has((cli||'').toLowerCase()) ? 'ok' : 'miss';
           card.innerHTML = '<div class="khead"><span class="cal-dot '+_status+'"></span>'+(cli||'')+'</div>' +
                            '<div class="kmeta">'+(cod||'')+' • '+vend+' • '+ges+'</div>' +
                            '<div class="muted" style="margin-top:6px;">Semana '+sema+' — '+dia+'</div>';
@@ -2637,7 +2667,7 @@ document.addEventListener('click', (ev)=>{
     }else{
 
       const data = buildRealizadas();
-      try { window._REALIZADAS_CLIENTES = new Set(data.map(o => (o['Cliente']||'').toString().trim().toLowerCase())); document.dispatchEvent(new CustomEvent('realizadas:update',{detail:{legacy:true}})); } catch (e) { window._REALIZADAS_CLIENTES = new Set(); }
+      try { window._REALIZADAS_CLIENTES = new Set(data.map(o => (o['Cliente']||'').toString().trim().toLowerCase())); } catch (e) { window._REALIZADAS_CLIENTES = new Set(); }
       const headers = ['Cliente','Vendedor','Gestor','Realizadas','Última llamada'];
       setTable(headers, data);
       elements.btnActive.dataset.sheet = 'Realizadas';
@@ -4730,13 +4760,6 @@ document.getElementById('rsTabReal').onclick = (e)=>{ e.target.classList.add('ac
         }
       });
       window.__repRows__ = out;
-      try{
-        window._REALIZADAS_KEYS = new Set(out.map(function(r){ 
-          var sem = (window.RZ && RZ.getSemanaFromRow) ? RZ.getSemanaFromRow(r) : (r.NSEMANA||r['N Semana']||r.nsemana||r.semana||r.Semana);
-          return (String((r['Cliente']||r.Cliente||'')).trim().toLowerCase() + '|' + String(sem||'').trim());
-        }));
-        document.dispatchEvent(new CustomEvent('realizadas:update',{detail:{count:window._REALIZADAS_KEYS.size}}));
-      }catch(_){ window._REALIZADAS_KEYS = new Set(); }
     }catch(e){ console.error('renderReporte (patched) error', e); }
   };
 
@@ -5278,64 +5301,6 @@ document.getElementById('rsTabReal').onclick = (e)=>{ e.target.classList.add('ac
 
 </body>
 </html>
-
-<script>
-(function(){
-  function normCli(v){ return (v||'').toString().trim().toLowerCase(); }
-  function key(cli, sem){ return normCli(cli) + '|' + String(sem||'').trim(); }
-  function getSemanaFromRow(row){
-    try { return (window.RZ && typeof RZ.getSemanaFromRow==='function') ? RZ.getSemanaFromRow(row) : (row.NSEMANA||row['N Semana']||row.nsemana||row.semana||row.Semana); } catch(_){ return row && (row.NSEMANA||row['N Semana']||row.nsemana||row.semana||row.Semana); }
-  }
-  function parseSemanaFromCall(call){
-    try{
-      if (call.nsemana!=null && call.nsemana!=='') return Number(call.nsemana);
-      var fh = call.fecha_hora || call.fechaHora || call['fecha_hora'] || call['FechaHora'] || call['Fecha y hora'] || call['Fecha'] || call['fecha'];
-      if (window.RZ && typeof RZ.parseDateLoose==='function' && typeof RZ.weekOfMonth14==='function'){
-        var d = RZ.parseDateLoose(fh);
-        return RZ.weekOfMonth14(d);
-      }
-      return null;
-    }catch(_){ return null; }
-  }
-
-  function collectKeysFromReporte(){
-    try{
-      var rows = (window.__repRows__||[]);
-      if (Array.isArray(rows) && rows.length){
-        var s = new Set();
-        rows.forEach(function(r){
-          var sem = getSemanaFromRow(r);
-          s.add(key(r['Cliente']||r.Cliente, sem));
-        });
-        return s;
-      }
-    }catch(_){}
-    return null;
-  }
-  function collectKeysFromCalls(){
-    try{
-      var calls = (window.loadAllCallRecords ? window.loadAllCallRecords() : []);
-      var s = new Set();
-      calls.forEach(function(c){
-        var sem = parseSemanaFromCall(c);
-        s.add(key(c.cliente||c.Cliente, sem));
-      });
-      return s;
-    }catch(_){ return new Set(); }
-  }
-
-  window.getRealizadasKeySet = function(){
-    return collectKeysFromReporte() || collectKeysFromCalls();
-  };
-
-  document.addEventListener('DOMContentLoaded', function(){
-    try{ window._REALIZADAS_KEYS = getRealizadasKeySet(); }catch(_){ window._REALIZADAS_KEYS = new Set(); }
-  });
-  document.addEventListener('realizadas:saved', function(){ try{ window._REALIZADAS_KEYS = getRealizadasKeySet(); }catch(_){} });
-  document.addEventListener('realizadas:update', function(){ try{ window._REALIZADAS_KEYS = getRealizadasKeySet(); }catch(_){ } });
-})();
-</script>
-
 <!-- Performance & Map-Ready Fix -->
 <script>
 (function(){
