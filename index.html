@@ -5325,6 +5325,193 @@ document.getElementById('rsTabReal').onclick = (e)=>{ e.target.classList.add('ac
 })();
 </script>
 
+
+<script id="kpi-engine-v147">
+(function(){
+  const $ = (sel,root=document)=>root.querySelector(sel);
+  const $$= (sel,root=document)=>Array.from(root.querySelectorAll(sel));
+  const norm = s => (s==null? "": String(s)).trim();
+  const lower = s => norm(s).toLowerCase();
+  const num = v => { const n = Number(v); return isFinite(n)? n: 0; };
+
+  function valFrom(r, keys){
+    for(const k of keys){ if(r && r[k]!=null && r[k]!=='' ) return r[k]; }
+    return '';
+  }
+  function mapWeek(w){
+    const n = Number(w);
+    if(isFinite(n) && n>=1){ return (n<=4) ? String(n) : String(((n-1)%4)+1); }
+    return String(w||'');
+  }
+  function parseDateAny(v){
+    if(v instanceof Date) return v;
+    const s = norm(v);
+    if(!s) return null;
+    const d = new Date(s);
+    return isNaN(d.getTime()) ? null : d;
+  }
+
+  function currentFilters(){
+    const get = sel => ( $(sel) ? $(sel).value : "Todas" );
+    return {
+      semana: get('#rwSemana') || "Todas",
+      vendedor: get('#rwVendedor') || "Todos",
+      gestor: get('#rwGestor') || "Todos"
+    };
+  }
+  function isAll(v){ return v==null || v==='' || v==='Todas' || v==='Todos'; }
+
+  function getPlanRows(filters){
+    let rows = [];
+    const S = (window.STATE||{});
+    if (Array.isArray(S.calendario) && S.calendario.length){
+      rows = S.calendario.map(r=>({
+        gestor: norm(valFrom(r,['gestor_servicio','Gestor','GESTOR_SERVICIO','gestor'])),
+        vendedor: norm(valFrom(r,['vendedor','Vendedor','VENDEDOR'])),
+        semana: mapWeek(valFrom(r,['SEMANA','Semana','semana']))
+      }));
+    } else if (Array.isArray(S.joined) && S.joined.length){
+      rows = S.joined.map(x=>({gestor:norm(x.gestor), vendedor:norm(x.vendedor), semana:mapWeek(x.semana)}));
+    } else {
+      // last resort: read pending agenda table if present
+      const tb = $('#tbl tbody');
+      if(tb){
+        rows = $$('tr',tb).map(tr=>{
+          const cs = tr.children;
+          return {
+            vendedor: norm(cs[7]?.textContent||cs[6]?.textContent||''),
+            gestor:   norm(cs[8]?.textContent||cs[5]?.textContent||''),
+            semana:   mapWeek(norm(cs[2]?.textContent||''))
+          };
+        });
+      }
+    }
+    // apply filters
+    return rows.filter(r=> (isAll(filters.semana) || String(r.semana)===String(filters.semana))
+                        && (isAll(filters.vendedor) || r.vendedor===filters.vendedor)
+                        && (isAll(filters.gestor)   || r.gestor===filters.gestor));
+  }
+
+  function getCallsRows(filters){
+    // Combine localStorage cache + STATE.calls
+    let calls = [];
+    try{ calls = JSON.parse(localStorage.getItem('llamadas_records') || '[]'); }catch(_){ calls=[]; }
+    if (window.STATE && Array.isArray(window.STATE.calls)) calls = calls.concat(window.STATE.calls);
+
+    return calls.map(c=>{
+      const d = parseDateAny(c['Fecha/Hora']||c['Fecha']||c['fecha']||c['fecha_hora']||c['FechaHora']);
+      return {
+        cod: norm(c.cod || c.codigo || c.cod_cliente || c.id || c['Cod'] || c['Cod Empresa'] || ''),
+        vendedor: norm(c.vendedor || c.Vendedor || ''),
+        gestor:   norm(c.gestor_servicio || c.Gestor || c.gestor || ''),
+        semana:   mapWeek(c.semana || valFrom(c,['N Semana','n_semana','N_Semana','semana'])),
+        fecha: d
+      };
+    }).filter(c=> (isAll(filters.semana) || String(c.semana)===String(filters.semana))
+                && (isAll(filters.vendedor) || c.vendedor===filters.vendedor)
+                && (isAll(filters.gestor)   || c.gestor===filters.gestor));
+  }
+
+  function rebuildKPIs(){
+    const scr = $('#screenResumenSem');
+    if(!scr || scr.style.display==='none') return;
+
+    const F = currentFilters();
+    const plan = getPlanRows(F);
+    const calls = getCallsRows(F);
+
+    // PLAN per gestor||semana
+    const planMap = new Map();
+    const key = (g,s)=> `${g}||${s}`;
+    plan.forEach(p=>{
+      const k = key(p.gestor, p.semana);
+      planMap.set(k, (planMap.get(k)||0) + 1);
+    });
+
+    // DONE per gestor||semana (unique clients per week)
+    const doneMap = new Map();
+    const lastMap = new Map();
+    const uniq = new Map(); // key: gestor||semana -> Set(cod)
+    calls.forEach(c=>{
+      const k = key(c.gestor, c.semana);
+      if(!uniq.has(k)) uniq.set(k, new Set());
+      const set = uniq.get(k);
+      const cod = c.cod.replace(/[^0-9]/g,'');
+      if(cod){
+        if(!set.has(cod)){
+          set.add(cod);
+          doneMap.set(k, (doneMap.get(k)||0) + 1);
+        }
+      }
+      const prev = lastMap.get(k);
+      if(!prev || (c.fecha && prev < c.fecha)) lastMap.set(k, c.fecha);
+    });
+
+    // Render rows for each gestor and weeks 1..4
+    const gestores = new Set();
+    plan.forEach(p=>gestores.add(p.gestor));
+    calls.forEach(c=>gestores.add(c.gestor));
+    const rows = [];
+    gestores.forEach(ges=>{
+      ['1','2','3','4'].forEach(sem=>{
+        const k = key(ges, sem);
+        const a = planMap.get(k) || 0;
+        const r = doneMap.get(k) || 0;
+        const pct = a ? Math.round((r/a)*100) : 0;
+        const last = lastMap.get(k) ? lastMap.get(k).toLocaleString('es-ES') : '';
+        rows.push({gestor:ges, semana:sem, a, r, pct, last});
+      });
+    });
+    rows.sort((x,y)=> x.gestor===y.gestor ? Number(x.semana)-Number(y.semana) : x.gestor.localeCompare(y.gestor,'es',{numeric:true}));
+
+    // KPIs
+    const totalA = rows.reduce((s,x)=>s+x.a,0);
+    const totalR = rows.reduce((s,x)=>s+x.r,0);
+    const totalCalls = calls.length;
+    const cov = totalA ? Math.round((totalR/totalA)*100) : 0;
+    const set = (id,val)=>{ const el = $('#'+id); if(el) el.textContent = String(val); };
+
+    set('rwPlan', totalA); set('kpiPlan', totalA);
+    set('rwDone', totalR); set('kpiDone', totalR);
+    set('rwCov', cov+'%'); set('kpiCov', cov+'%');
+    set('kpiCalls', totalCalls);
+
+    // Table
+    const tb = $('#rwTbl tbody');
+    if(tb){
+      tb.innerHTML='';
+      const frag=document.createDocumentFragment();
+      rows.forEach(row=>{
+        const tr=document.createElement('tr');
+        tr.innerHTML = `<td>${row.gestor||''}</td>
+                        <td>${row.semana||''}</td>
+                        <td>${row.a}</td>
+                        <td>${row.r}</td>
+                        <td>${row.pct}%</td>
+                        <td>${row.last}</td>`;
+        frag.appendChild(tr);
+      });
+      tb.appendChild(frag);
+    }
+  }
+
+  // Hook: when opens resumen or filters change
+  document.addEventListener('click', (ev)=>{
+    if(ev.target && (ev.target.id==='btnOpenResumenSem' || ev.target.closest('#btnOpenResumenSem'))){
+      setTimeout(rebuildKPIs, 250);
+      setTimeout(rebuildKPIs, 1200);
+    }
+  }, true);
+  ['#rwSemana','#rwVendedor','#rwGestor'].forEach(sel=>{
+    document.addEventListener('change', (ev)=>{
+      if(ev.target && ev.target.matches(sel)){ rebuildKPIs(); }
+    }, true);
+  });
+  // Safety refresh
+  setInterval(rebuildKPIs, 2500);
+})();
+</script>
+
 </body>
 </html>
 <!-- Performance & Map-Ready Fix -->
